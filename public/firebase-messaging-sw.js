@@ -15,35 +15,6 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-function payloadFromPush(event) {
-  if (!event.data) return {};
-  try {
-    return event.data.json() || {};
-  } catch (_) {
-    try {
-      return { data: { body: event.data.text() } };
-    } catch (e) {
-      return {};
-    }
-  }
-}
-
-self.addEventListener('push', (event) => {
-  event.waitUntil((async () => {
-    const payload = payloadFromPush(event);
-    const n = payload.notification || {};
-    const d = payload.data || {};
-    const title = n.title || d.title || 'Alubee';
-    const body = n.body || d.body || 'New Alubee update';
-    await self.registration.showNotification(title, {
-      body,
-      data: { ...n, ...d },
-      tag: String(d.requestId || d.taskId || title),
-      renotify: true,
-    });
-  })());
-});
-
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const data = event.notification.data || {};

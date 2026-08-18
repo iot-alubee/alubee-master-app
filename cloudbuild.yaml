@@ -8,6 +8,7 @@
 #   FIREBASE_STORAGE_BUCKET
 #   FIREBASE_MESSAGING_SENDER_ID
 #   FIREBASE_APP_ID
+#   FIREBASE_VAPID_KEY   (Firebase Console → Cloud Messaging → Web Push certificates)
 substitutions:
   _SERVICE: alubee-web
   _REGION: asia-south1

@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
 import ConnectivityBar from './components/ConnectivityBar';
 import { initPushNotifications } from './utils/pushNotifications';
+import WebPushPrompt from './components/WebPushPrompt';
 
 class ErrorBoundary extends React.Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null }; }
@@ -54,7 +55,7 @@ function PushInitializer() {
       console.log('Push received:', notification?.title || notification);
     });
   }, [userProfile?.id, userProfile?.mobile, userProfile?.appRole]);
-  return null;
+  return <WebPushPrompt userProfile={userProfile} />;
 }
 
 function AppRoutes() {

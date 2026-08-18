@@ -20,6 +20,11 @@ export function getFirebaseConfig() {
   return config;
 }
 
+export function getWebPushVapidKey() {
+  const runtime = (typeof window !== 'undefined' && window.__ALUBEE_FIREBASE__) || {};
+  return runtime.vapidKey || process.env.REACT_APP_FIREBASE_VAPID_KEY || '';
+}
+
 const app = initializeApp(getFirebaseConfig());
 export const auth = getAuth(app);
 export const db = getFirestore(app);

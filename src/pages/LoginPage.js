@@ -65,11 +65,6 @@ export default function LoginPage() {
       setPin(p);
       return;
     }
-    if (android && isBiometricEnabledLocally()) {
-      try {
-        await enableBiometricLogin(m, p);
-      } catch (_) {}
-    }
     navigate('/dashboard');
   }
 

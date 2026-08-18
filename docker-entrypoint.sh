@@ -26,8 +26,20 @@ window.__ALUBEE_FIREBASE__ = {
   projectId: "$(js_escape "$FIREBASE_PROJECT_ID")",
   storageBucket: "$(js_escape "$FIREBASE_STORAGE_BUCKET")",
   messagingSenderId: "$(js_escape "$FIREBASE_MESSAGING_SENDER_ID")",
-  appId: "$(js_escape "$FIREBASE_APP_ID")"
+  appId: "$(js_escape "$FIREBASE_APP_ID")",
+  vapidKey: "$(js_escape "$FIREBASE_VAPID_KEY")"
 };
+EOF
+
+cat > /usr/share/nginx/html/firebase-runtime-config.json <<EOF
+{
+  "apiKey": "$(js_escape "$FIREBASE_API_KEY")",
+  "authDomain": "$(js_escape "$FIREBASE_AUTH_DOMAIN")",
+  "projectId": "$(js_escape "$FIREBASE_PROJECT_ID")",
+  "storageBucket": "$(js_escape "$FIREBASE_STORAGE_BUCKET")",
+  "messagingSenderId": "$(js_escape "$FIREBASE_MESSAGING_SENDER_ID")",
+  "appId": "$(js_escape "$FIREBASE_APP_ID")"
+}
 EOF
 
 exec nginx -g "daemon off;"

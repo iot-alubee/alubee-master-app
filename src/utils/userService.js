@@ -21,7 +21,7 @@ import {
   setPersistence,
 } from 'firebase/auth';
 import { initializeApp, getApps } from 'firebase/app';
-import { db, auth } from '../firebase';
+import { db, auth, getFirebaseConfig } from '../firebase';
 import {
   mobileToAuthEmail,
   normalizeMobile,
@@ -57,23 +57,11 @@ import {
 export { replaceSharedUsers, refreshApproverIndex } from './sharedUserStore';
 export const USERS_COLLECTION = 'appUsers';
 
-function firebaseWebConfig() {
-  // Same project as src/firebase.js — do not create a new Firebase project
-  return {
-    apiKey: 'AIzaSyCJkWS0OjEbyAAiFCH7NRmIzfpLAZNP1iU',
-    authDomain: 'alubee-tasks.firebaseapp.com',
-    projectId: 'alubee-tasks',
-    storageBucket: 'alubee-tasks.firebasestorage.app',
-    messagingSenderId: '709761987440',
-    appId: '1:709761987440:web:baa05c51002625433195b5',
-  };
-}
-
 /** Secondary Auth app so creating users does not sign out the admin */
 function getSecondaryAuth() {
   const name = 'AlubeeSecondary';
   const existing = getApps().find((a) => a.name === name);
-  const app = existing || initializeApp(firebaseWebConfig(), name);
+  const app = existing || initializeApp(getFirebaseConfig(), name);
   let secondary;
   try {
     secondary = getAuth(app);

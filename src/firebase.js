@@ -2,23 +2,25 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-const _a = "AIzaSyCJkWS0OjEbyAAiFCH7NRmIzfpLAZNP1iU";
-const _b = "alubee-tasks.firebaseapp.com";
-const _c = "alubee-tasks";
-const _d = "alubee-tasks.firebasestorage.app";
-const _e = "709761987440";
-const _f = "1:709761987440:web:baa05c51002625433195b5";
+export function getFirebaseConfig() {
+  const runtime = (typeof window !== 'undefined' && window.__ALUBEE_FIREBASE__) || {};
+  const config = {
+    apiKey: runtime.apiKey || process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: runtime.authDomain || process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: runtime.projectId || process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: runtime.storageBucket || process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: runtime.messagingSenderId || process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: runtime.appId || process.env.REACT_APP_FIREBASE_APP_ID,
+  };
+  if (!config.apiKey || !config.projectId) {
+    throw new Error(
+      'Firebase config missing. Set Cloud Run env vars, or create Production/.env.local for local dev.'
+    );
+  }
+  return config;
+}
 
-const firebaseConfig = {
-  apiKey:            _a,
-  authDomain:        _b,
-  projectId:         _c,
-  storageBucket:     _d,
-  messagingSenderId: _e,
-  appId:             _f,
-};
-
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(getFirebaseConfig());
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export default app;

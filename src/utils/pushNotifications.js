@@ -9,6 +9,7 @@ import { flattenNotifData, storePendingNotifTap } from './mobileApp';
 const FCM_COL = 'fcm_tokens';
 const FCM_BACKUP_DOC = 'alubee_app_fcm_tokens';
 const CHANNEL_ID = 'alubee_tasks';
+const WEB_PUSH_READY_KEY = 'alubee_web_push_ready';
 
 let isNative = false;
 try {
@@ -168,6 +169,12 @@ async function registerWebToken(userProfile) {
 
   const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js', { scope: '/' });
   await navigator.serviceWorker.ready;
+  if (!navigator.serviceWorker.controller) {
+    await new Promise((resolve) => {
+      navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+      setTimeout(resolve, 2500);
+    });
+  }
 
   const messaging = getMessaging(app);
   const token = await getToken(messaging, {
@@ -176,6 +183,7 @@ async function registerWebToken(userProfile) {
   });
   if (!token) throw new Error('Could not get a notification token');
   await saveTokenForUser(token, userProfile);
+  try { localStorage.setItem(WEB_PUSH_READY_KEY, '1'); } catch (_) {}
 
   if (!listenersReady) {
     listenersReady = true;
@@ -212,7 +220,18 @@ export function getWebPushPromptState() {
       message: 'On iPhone, add this site to the Home Screen from Safari, then open that Alubee icon to enable alerts.',
     };
   }
-  if (Notification.permission === 'granted') return { show: false, message: '', canEnable: false };
+  if (Notification.permission === 'granted') {
+    try {
+      if (localStorage.getItem(WEB_PUSH_READY_KEY) === '1') {
+        return { show: false, message: '', canEnable: false };
+      }
+    } catch (_) {}
+    return {
+      show: true,
+      canEnable: true,
+      message: 'iPhone alerts are allowed. Tap Enable once more so Alubee can finish connecting push.',
+    };
+  }
   if (Notification.permission === 'denied') {
     return {
       show: true,

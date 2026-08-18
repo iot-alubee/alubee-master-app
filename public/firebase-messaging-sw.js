@@ -1,6 +1,12 @@
 /* global firebase, clients, self */
+importScripts('/firebase-sw-config.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js');
+
+if (self.__ALUBEE_FIREBASE_SW__ && self.__ALUBEE_FIREBASE_SW__.apiKey) {
+  if (!firebase.apps.length) firebase.initializeApp(self.__ALUBEE_FIREBASE_SW__);
+  try { firebase.messaging(); } catch (_) {}
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(self.skipWaiting());
@@ -9,30 +15,34 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-async function initFirebaseMessaging() {
+function payloadFromPush(event) {
+  if (!event.data) return {};
   try {
-    const res = await fetch('/firebase-runtime-config.json', { cache: 'no-store' });
-    if (!res.ok) return;
-    const cfg = await res.json();
-    if (!cfg?.apiKey || !cfg?.projectId) return;
-    if (!firebase.apps.length) firebase.initializeApp(cfg);
-    const messaging = firebase.messaging();
-    messaging.onBackgroundMessage((payload) => {
-      if (payload?.notification) return;
-      const title = payload?.data?.title || 'Alubee';
-      const body = payload?.data?.body || '';
-      return self.registration.showNotification(title, {
-        body,
-        icon: '/alubee-icon.svg',
-        data: payload?.data || {},
-      });
-    });
-  } catch (err) {
-    console.warn('firebase-messaging-sw init failed', err);
+    return event.data.json() || {};
+  } catch (_) {
+    try {
+      return { data: { body: event.data.text() } };
+    } catch (e) {
+      return {};
+    }
   }
 }
 
-initFirebaseMessaging();
+self.addEventListener('push', (event) => {
+  event.waitUntil((async () => {
+    const payload = payloadFromPush(event);
+    const n = payload.notification || {};
+    const d = payload.data || {};
+    const title = n.title || d.title || 'Alubee';
+    const body = n.body || d.body || 'New Alubee update';
+    await self.registration.showNotification(title, {
+      body,
+      data: { ...n, ...d },
+      tag: String(d.requestId || d.taskId || title),
+      renotify: true,
+    });
+  })());
+});
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();

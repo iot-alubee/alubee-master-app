@@ -67,6 +67,7 @@ node_modules/
 .env.local
 .env.*.local
 firebase-runtime-config.json
+firebase-sw-config.js
 
 # dataconnect generated files
 .dataconnect

@@ -1,6 +1,6 @@
 
 // ── Soft update check (do NOT reload on every Excel/tab focus) ─────────────────
-const APP_VERSION = '114';
+const APP_VERSION = '115';
 let _versionCheckBusy = false;
 async function checkVersion() {
   if (_versionCheckBusy) return;

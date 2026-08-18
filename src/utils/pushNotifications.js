@@ -95,9 +95,11 @@ async function saveTokenForUser(tokenValue, userProfile) {
     await setDoc(ref, next, { merge: true });
   }
 
+  let saved = false;
   if (mobile) {
     try {
       await mergeInto(doc(db, FCM_COL, mobile));
+      saved = true;
     } catch (err) {
       console.warn('fcm_tokens mobile save failed', err?.code || err?.message);
     }
@@ -105,6 +107,7 @@ async function saveTokenForUser(tokenValue, userProfile) {
   if (userId && userId !== mobile) {
     try {
       await mergeInto(doc(db, FCM_COL, String(userId)));
+      saved = true;
     } catch (err) {
       console.warn('fcm_tokens userId save failed', err?.code || err?.message);
     }
@@ -112,6 +115,7 @@ async function saveTokenForUser(tokenValue, userProfile) {
   if (workEmail && workEmail.includes('@') && !workEmail.endsWith('@mobile.alubee.com')) {
     try {
       await mergeInto(doc(db, FCM_COL, workEmail.replace(/[@.]/g, '_')));
+      saved = true;
     } catch (_) {}
   }
 
@@ -129,9 +133,13 @@ async function saveTokenForUser(tokenValue, userProfile) {
         ...(platform === 'web' ? { webToken: tokenValue } : { androidToken: tokenValue }),
       };
       await setDoc(ref, { items, updatedAt: new Date().toISOString() }, { merge: true });
+      saved = true;
     } catch (err) {
       console.warn('fcm backup save failed', err?.code || err?.message);
     }
+  }
+  if (!saved) {
+    throw new Error('Could not save the iPhone push token. Check network and try Enable again.');
   }
 }
 
@@ -223,12 +231,18 @@ export function getWebPushPromptState() {
   if (Notification.permission === 'granted') {
     try {
       if (localStorage.getItem(WEB_PUSH_READY_KEY) === '1') {
-        return { show: false, message: '', canEnable: false };
+        return {
+          show: true,
+          canEnable: false,
+          canTest: true,
+          message: 'iPhone permission is on. Lock the phone, then tap Test. If nothing arrives, Cloud Functions still need deploy.',
+        };
       }
     } catch (_) {}
     return {
       show: true,
       canEnable: true,
+      canTest: false,
       message: 'iPhone alerts are allowed. Tap Enable once more so Alubee can finish connecting push.',
     };
   }
@@ -352,5 +366,25 @@ export async function initPushNotifications(userProfile, onNotificationReceived)
   }
 }
 
-export async function sendPushToUser() {}
+export async function sendTestWebPush(userProfile) {
+  currentProfile = userProfile || currentProfile;
+  const profile = currentProfile;
+  const mobile = getProfileMobile(profile) || normalizeAppMobile(profile?.mobile);
+  if (!mobile) throw new Error('This login has no mobile number, so a test push cannot be sent.');
+  if (navigator.serviceWorker) {
+    const reg = await navigator.serviceWorker.ready;
+    await reg.showNotification('Alubee test', {
+      body: 'This is a local test. Lock the iPhone — a second server alert should follow.',
+      tag: 'alubee-local-test',
+    });
+  }
+  const { createAppRequestNotification } = await import('./requestService');
+  await createAppRequestNotification({
+    type: 'request',
+    title: 'Alubee test alert',
+    message: 'Server push to this iPhone.',
+    targetMobile: mobile,
+    pendingApproval: false,
+  });
+}
 export async function sendPushToMobile() {}

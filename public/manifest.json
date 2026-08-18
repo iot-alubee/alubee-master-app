@@ -1,0 +1,16 @@
+{
+  "short_name": "Alubee",
+  "name": "Alubee Die Casters",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "theme_color": "#16a34a",
+  "background_color": "#111a12",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "icons/playstore_icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

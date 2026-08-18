@@ -1,0 +1,167 @@
+/* ═══════════════════════════════════════════════════════════════
+   ALUBEE DIE CASTERS — DESIGN TOKEN SYSTEM v1.0
+   Industrial-grade precision. Factory-floor readable.
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── BASE PALETTE ── */
+  --slate-950: #030712;
+  --slate-900: #0a0f1e;
+  --slate-850: #0d1425;
+  --slate-800: #111827;
+  --slate-750: #161d2e;
+  --slate-700: #1e2740;
+  --slate-600: #2a3550;
+  --slate-500: #3d4f70;
+  --slate-400: #5a6e94;
+  --slate-300: #8496b8;
+  --slate-200: #b0bed6;
+  --slate-100: #d8dfed;
+  --slate-50:  #eef1f7;
+
+  /* ── ACCENT — Electric Cyan ── */
+  --accent:       #00d4ff;
+  --accent-dim:   #00a8cc;
+  --accent-glow:  rgba(0, 212, 255, 0.15);
+  --accent-glass: rgba(0, 212, 255, 0.08);
+
+  /* ── SEMANTIC STATUS ── */
+  --green:      #22c55e;
+  --green-dim:  #16a34a;
+  --green-bg:   rgba(34, 197, 94, 0.12);
+  --green-glow: rgba(34, 197, 94, 0.25);
+
+  --amber:      #f59e0b;
+  --amber-dim:  #d97706;
+  --amber-bg:   rgba(245, 158, 11, 0.12);
+  --amber-glow: rgba(245, 158, 11, 0.25);
+
+  --red:        #ef4444;
+  --red-dim:    #dc2626;
+  --red-bg:     rgba(239, 68, 68, 0.12);
+  --red-glow:   rgba(239, 68, 68, 0.25);
+
+  --orange:     #f97316;
+  --orange-dim: #ea580c;
+  --orange-bg:  rgba(249, 115, 22, 0.12);
+
+  --purple:     #a855f7;
+  --purple-bg:  rgba(168, 85, 247, 0.12);
+
+  /* ── SURFACES (dark mode default) ── */
+  --bg-base:    var(--slate-900);
+  --bg-raised:  var(--slate-800);
+  --bg-overlay: var(--slate-750);
+  --bg-inset:   var(--slate-950);
+
+  /* ── GLASS SURFACES ── */
+  --glass-1: rgba(255, 255, 255, 0.03);
+  --glass-2: rgba(255, 255, 255, 0.05);
+  --glass-3: rgba(255, 255, 255, 0.08);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-border-accent: rgba(0, 212, 255, 0.2);
+
+  /* ── BORDERS ── */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.10);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* ── TEXT ── */
+  --text-primary:   #e8edf5;
+  --text-secondary: #8496b8;
+  --text-muted:     #4a5568;
+  --text-accent:    var(--accent);
+  --text-invert:    #0a0f1e;
+
+  /* ── ELEVATION SHADOWS (5 levels) ── */
+  --shadow-0: none;
+  --shadow-1: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.05);
+  --shadow-3: 0 8px 24px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06);
+  --shadow-4: 0 16px 48px rgba(0,0,0,0.6), 0 8px 24px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,255,255,0.07);
+  --shadow-5: 0 32px 80px rgba(0,0,0,0.7), 0 16px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.08);
+  --shadow-accent: 0 0 24px rgba(0,212,255,0.2), 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-green: 0 0 24px rgba(34,197,94,0.2), 0 4px 16px rgba(0,0,0,0.4);
+  --shadow-red:   0 0 24px rgba(239,68,68,0.2), 0 4px 16px rgba(0,0,0,0.4);
+
+  /* ── RADII ── */
+  --radius-sm:  6px;
+  --radius-md:  10px;
+  --radius-lg:  14px;
+  --radius-xl:  18px;
+  --radius-2xl: 24px;
+  --radius-full: 9999px;
+
+  /* ── SPACING (8px base grid) ── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  /* ── TYPOGRAPHY ── */
+  --font-sans: 'Inter', 'DM Sans', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-tabular: 'Inter', system-ui, sans-serif;
+  font-feature-settings: "tnum" 1;  /* tabular nums for all figures */
+
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   15px;
+  --text-lg:   18px;
+  --text-xl:   22px;
+  --text-2xl:  28px;
+  --text-3xl:  36px;
+  --text-4xl:  48px;
+
+  /* ── TRANSITIONS ── */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:  cubic-bezier(0.4, 0, 1, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --t-fast:   150ms;
+  --t-base:   200ms;
+  --t-slow:   300ms;
+
+  /* ── SIDEBAR ── */
+  --sidebar-w: 220px;
+  --sidebar-w-mobile: 60px;
+
+  /* ── Z-INDEX ── */
+  --z-base:    1;
+  --z-raised:  10;
+  --z-modal:   100;
+  --z-toast:   200;
+  --z-top:     999;
+}
+
+/* ── LIGHT MODE OVERRIDES ── */
+[data-theme="light"] {
+  --bg-base:    #f0f4f8;
+  --bg-raised:  #ffffff;
+  --bg-overlay: #f8fafc;
+  --bg-inset:   #e8eef5;
+  --glass-1:    rgba(0,0,0,0.02);
+  --glass-2:    rgba(0,0,0,0.03);
+  --glass-3:    rgba(0,0,0,0.05);
+  --glass-border: rgba(0,0,0,0.08);
+  --border-subtle:  rgba(0,0,0,0.06);
+  --border-default: rgba(0,0,0,0.10);
+  --border-strong:  rgba(0,0,0,0.16);
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+  --shadow-1: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-2: 0 4px 12px rgba(0,0,0,0.10), 0 2px 6px rgba(0,0,0,0.06);
+  --shadow-3: 0 8px 24px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.08);
+  --shadow-4: 0 16px 48px rgba(0,0,0,0.14), 0 8px 24px rgba(0,0,0,0.10);
+}
+
+/* ── Remove number input spinners globally ─────────────────────────────── */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+input[type=number] { -moz-appearance:textfield; appearance:textfield; }

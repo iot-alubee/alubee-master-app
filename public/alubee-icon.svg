@@ -1,0 +1,65 @@
+<svg width="680" height="680" viewBox="0 0 680 680" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="roundClip">
+      <rect width="680" height="680" rx="140"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#roundClip)">
+    <rect width="680" height="680" fill="#111a12"/>
+    <g stroke="#1a2e1c" stroke-width="1" fill="none" opacity="0.8">
+      <polygon points="80,40 120,40 140,75 120,110 80,110 60,75"/>
+      <polygon points="160,40 200,40 220,75 200,110 160,110 140,75"/>
+      <polygon points="240,40 280,40 300,75 280,110 240,110 220,75"/>
+      <polygon points="320,40 360,40 380,75 360,110 320,110 300,75"/>
+      <polygon points="400,40 440,40 460,75 440,110 400,110 380,75"/>
+      <polygon points="480,40 520,40 540,75 520,110 480,110 460,75"/>
+      <polygon points="560,40 600,40 620,75 600,110 560,110 540,75"/>
+      <polygon points="40,110 80,110 100,145 80,180 40,180 20,145"/>
+      <polygon points="120,110 160,110 180,145 160,180 120,180 100,145"/>
+      <polygon points="200,110 240,110 260,145 240,180 200,180 180,145"/>
+      <polygon points="280,110 320,110 340,145 320,180 280,180 260,145"/>
+      <polygon points="360,110 400,110 420,145 400,180 360,180 340,145"/>
+      <polygon points="440,110 480,110 500,145 480,180 440,180 420,145"/>
+      <polygon points="520,110 560,110 580,145 560,180 520,180 500,145"/>
+      <polygon points="600,110 640,110 660,145 640,180 600,180 580,145"/>
+    </g>
+    <g opacity="0.25">
+      <circle cx="340" cy="295" r="195" fill="none" stroke="#22c55e" stroke-width="4"/>
+      <circle cx="340" cy="295" r="155" fill="none" stroke="#22c55e" stroke-width="2"/>
+      <g fill="#22c55e">
+        <rect x="324" y="82" width="32" height="44" rx="5"/>
+        <rect x="324" y="464" width="32" height="44" rx="5"/>
+        <rect x="478" y="279" width="44" height="32" rx="5"/>
+        <rect x="158" y="279" width="44" height="32" rx="5"/>
+        <rect x="420" y="112" width="32" height="44" rx="5" transform="rotate(30 436 134)"/>
+        <rect x="228" y="112" width="32" height="44" rx="5" transform="rotate(-30 244 134)"/>
+        <rect x="420" y="434" width="32" height="44" rx="5" transform="rotate(-30 436 456)"/>
+        <rect x="228" y="434" width="32" height="44" rx="5" transform="rotate(30 244 456)"/>
+        <rect x="468" y="186" width="44" height="32" rx="5" transform="rotate(30 490 202)"/>
+        <rect x="168" y="186" width="44" height="32" rx="5" transform="rotate(-30 190 202)"/>
+        <rect x="468" y="372" width="44" height="32" rx="5" transform="rotate(-30 490 388)"/>
+        <rect x="168" y="372" width="44" height="32" rx="5" transform="rotate(30 190 388)"/>
+      </g>
+      <line x1="340" y1="140" x2="340" y2="450" stroke="#22c55e" stroke-width="3"/>
+      <line x1="185" y1="212" x2="495" y2="378" stroke="#22c55e" stroke-width="3"/>
+      <line x1="495" y1="212" x2="185" y2="378" stroke="#22c55e" stroke-width="3"/>
+      <circle cx="340" cy="295" r="38" fill="#1a2e1c" stroke="#22c55e" stroke-width="3"/>
+    </g>
+    <polygon points="148,510 218,510 274,220 240,160 200,160" fill="#16a34a"/>
+    <polygon points="532,510 462,510 406,220 440,160 480,160" fill="#16a34a"/>
+    <polygon points="240,160 340,100 440,160 400,210 340,145 280,210" fill="#22c55e"/>
+    <rect x="238" y="345" width="204" height="46" rx="6" fill="#22c55e"/>
+    <rect x="238" y="345" width="204" height="12" rx="6" fill="#4ade80" opacity="0.4"/>
+    <ellipse cx="290" cy="395" rx="10" ry="6" fill="#86efac" opacity="0.7"/>
+    <ellipse cx="390" cy="395" rx="10" ry="6" fill="#86efac" opacity="0.7"/>
+    <ellipse cx="290" cy="415" rx="6" ry="10" fill="#4ade80" opacity="0.5"/>
+    <ellipse cx="390" cy="418" rx="5" ry="8" fill="#4ade80" opacity="0.4"/>
+    <circle cx="340" cy="118" r="18" fill="#4ade80" opacity="0.4"/>
+    <circle cx="340" cy="118" r="10" fill="#86efac" opacity="0.8"/>
+    <circle cx="340" cy="118" r="5" fill="#ffffff"/>
+    <rect x="0" y="534" width="680" height="146" fill="#0a1510"/>
+    <rect x="0" y="530" width="680" height="7" fill="#16a34a"/>
+    <text x="340" y="606" font-family="Arial Black, Arial, sans-serif" font-size="76" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="4">ALUBEE</text>
+    <text x="340" y="648" font-family="Arial, sans-serif" font-size="22" font-weight="400" fill="#4ade80" text-anchor="middle" letter-spacing="5">DIE CASTERS</text>
+  </g>
+</svg>

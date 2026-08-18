@@ -231,18 +231,12 @@ export function getWebPushPromptState() {
   if (Notification.permission === 'granted') {
     try {
       if (localStorage.getItem(WEB_PUSH_READY_KEY) === '1') {
-        return {
-          show: true,
-          canEnable: false,
-          canTest: true,
-          message: 'iPhone permission is on. Lock the phone, then tap Test. If nothing arrives, Cloud Functions still need deploy.',
-        };
+        return { show: false, message: '', canEnable: false };
       }
     } catch (_) {}
     return {
       show: true,
       canEnable: true,
-      canTest: false,
       message: 'iPhone alerts are allowed. Tap Enable once more so Alubee can finish connecting push.',
     };
   }
@@ -364,27 +358,5 @@ export async function initPushNotifications(userProfile, onNotificationReceived)
   } catch (e) {
     console.error('Push notifications init error:', e);
   }
-}
-
-export async function sendTestWebPush(userProfile) {
-  currentProfile = userProfile || currentProfile;
-  const profile = currentProfile;
-  const mobile = getProfileMobile(profile) || normalizeAppMobile(profile?.mobile);
-  if (!mobile) throw new Error('This login has no mobile number, so a test push cannot be sent.');
-  if (navigator.serviceWorker) {
-    const reg = await navigator.serviceWorker.ready;
-    await reg.showNotification('Alubee test', {
-      body: 'This is a local test. Lock the iPhone — a second server alert should follow.',
-      tag: 'alubee-local-test',
-    });
-  }
-  const { createAppRequestNotification } = await import('./requestService');
-  await createAppRequestNotification({
-    type: 'request',
-    title: 'Alubee test alert',
-    message: 'Server push to this iPhone.',
-    targetMobile: mobile,
-    pendingApproval: false,
-  });
 }
 export async function sendPushToMobile() {}

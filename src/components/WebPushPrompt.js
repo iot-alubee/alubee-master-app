@@ -3,11 +3,10 @@ import {
   enableWebPushFromUserGesture,
   getWebPushPromptState,
   isNativeApp,
-  sendTestWebPush,
 } from '../utils/pushNotifications';
 
 export default function WebPushPrompt({ userProfile }) {
-  const [state, setState] = useState({ show: false, message: '', canEnable: false, canTest: false });
+  const [state, setState] = useState({ show: false, message: '', canEnable: false });
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -26,29 +25,7 @@ export default function WebPushPrompt({ userProfile }) {
       setState({
         show: true,
         canEnable: true,
-        canTest: false,
         message: err?.message || 'Could not enable notifications',
-      });
-    }
-    setBusy(false);
-  }
-
-  async function onTest() {
-    setBusy(true);
-    try {
-      await sendTestWebPush(userProfile);
-      setState({
-        ...getWebPushPromptState(),
-        show: true,
-        canTest: true,
-        message: 'Test sent. Lock the iPhone now. Local test should show immediately; server test needs Cloud Functions.',
-      });
-    } catch (err) {
-      setState({
-        show: true,
-        canEnable: false,
-        canTest: true,
-        message: err?.message || 'Test failed',
       });
     }
     setBusy(false);
@@ -60,11 +37,6 @@ export default function WebPushPrompt({ userProfile }) {
       {state.canEnable && (
         <button type="button" style={s.btn} onClick={onEnable} disabled={busy}>
           {busy ? 'Please wait…' : 'Enable'}
-        </button>
-      )}
-      {state.canTest && (
-        <button type="button" style={s.btn} onClick={onTest} disabled={busy}>
-          {busy ? 'Sending…' : 'Test'}
         </button>
       )}
     </div>

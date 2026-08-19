@@ -5,6 +5,9 @@ import {
   updateAppRequest,
   createAppRequestNotification,
   normalizeAppMobile,
+  mobilesMatch,
+  notifIsForUser,
+  getProfileMobile,
 } from './requestService';
 
 const AVAIL_COL = 'approver_availability';
@@ -72,6 +75,11 @@ const TYPE_TO_MODULE = {
 
 export function canAccessSettings(appRole) {
   return appRole === 'md' || appRole === 'jmd_1' || appRole === 'jmd_2' || appRole === 'admin';
+}
+
+/** Only MD and JMDs receive company-wide module alerts (security, dispatch, …). */
+export function isBroadcastNotifRole(appRole) {
+  return appRole === 'md' || appRole === 'jmd_1' || appRole === 'jmd_2';
 }
 
 export function normalizeAvailability(raw) {
@@ -275,6 +283,75 @@ export function notifAllowedByPrefs(n, prefs) {
   return true;
 }
 
+function nameMatches(personName, candidate) {
+  const me = String(personName || '').trim().toLowerCase();
+  const val = String(candidate || '').trim().toLowerCase();
+  if (!me || !val) return false;
+  return val === me || val.includes(me) || me.includes(val);
+}
+
+function isPersonalNotif(n, user) {
+  if (!n || !user) return false;
+  const mobile = getProfileMobile(user) || user.mobile || '';
+  const appRole = user.appRole || '';
+  const userId = user.id || '';
+  const name = user.name || user.employeeName || '';
+
+  if (notifIsForUser(n, mobile, appRole)) return true;
+  if (mobilesMatch(n.employeeMobile, mobile) || mobilesMatch(n.assignedToMobile, mobile)) return true;
+  if (userId && (n.assignedPersonId === userId || n.assignedToPersonId === userId || n.raisedById === userId)) {
+    return true;
+  }
+  if (
+    nameMatches(name, n.assignedTo) ||
+    nameMatches(name, n.assignedToPersonName) ||
+    nameMatches(name, n.assignedToName) ||
+    nameMatches(name, n.targetName)
+  ) {
+    return true;
+  }
+  const taskTypes = [
+    'task_assigned', 'task_completed', 'task_updated', 'task_cancelled',
+    'task_deleted', 'task_overdue', 'task_reopened', 'delete_requested',
+  ];
+  if (taskTypes.includes(n.type) && (nameMatches(name, n.raisedBy) || nameMatches(name, n.raisedByName))) {
+    return true;
+  }
+  const personalSecurity = ['permission', 'visitor', 'dc', 'tea'];
+  if (personalSecurity.includes(n.type) && (
+    nameMatches(name, n.alubeanToMeet) ||
+    nameMatches(name, n.employeeToMeet) ||
+    nameMatches(name, n.employeeName)
+  )) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * MD / JMD: all module alerts unless turned off in Settings (approvals always on).
+ * Everyone else: only their own tasks and requests.
+ */
+export function notifVisibleToUser(n, user, prefs) {
+  if (!n || !user) return false;
+  const appRole = user.appRole || '';
+  const isRequest = n.type === 'request' || n._source === 'app_request';
+
+  if (isBroadcastNotifRole(appRole)) {
+    if (isRequest) return true;
+    return notifAllowedByPrefs(n, prefs);
+  }
+
+  if (isRequest) {
+    return notifIsForUser(n, getProfileMobile(user) || user.mobile, appRole);
+  }
+  return isPersonalNotif(n, user);
+}
+
 export function filterNotifsByPrefs(list, prefs) {
   return (list || []).filter((n) => notifAllowedByPrefs(n, prefs));
+}
+
+export function filterNotifsForUser(list, user, prefs) {
+  return (list || []).filter((n) => notifVisibleToUser(n, user, prefs));
 }

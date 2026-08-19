@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { resolveStoredAppRole } from '../data/appRoles';
 
 /** Existing writable collection in this Firebase project (customer/supplier already use it). */
 const COL = 'working_days_config';
@@ -15,8 +16,8 @@ function toPlain(profile) {
     employeeId: profile.employeeId || '',
     employeeName: profile.employeeName || profile.name || '',
     name: profile.employeeName || profile.name || '',
-    role: profile.appRole || profile.role || '',
-    appRole: profile.appRole || profile.role || '',
+    role: resolveStoredAppRole(profile) || profile.appRole || profile.role || '',
+    appRole: resolveStoredAppRole(profile) || profile.appRole || profile.role || '',
     reportingTo: profile.reportingTo || '',
     mobile: profile.mobile || '',
     linkedEmail: profile.linkedEmail || '',
@@ -101,7 +102,7 @@ export async function refreshApproverIndex(userList) {
       (x) =>
         x &&
         x.active !== false &&
-        (x.appRole === role || x.role === role)
+        resolveStoredAppRole(x) === role
     );
     if (!u) continue;
     const email = String(u.authEmail || u.email || '').toLowerCase();

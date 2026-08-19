@@ -41,8 +41,13 @@ export function upsertLocalUser(profile) {
   if (!profile?.id) return;
   const list = readAll();
   const idx = list.findIndex((u) => u.id === profile.id || (profile.mobile && u.mobile === profile.mobile));
-  const next = { ...profile, updatedAt: new Date().toISOString() };
-  if (idx >= 0) list[idx] = { ...list[idx], ...next };
+  const next = {
+    ...profile,
+    updatedAt: new Date().toISOString(),
+    appRole: profile.appRole || profile.role || '',
+    role: profile.role,
+  };
+  if (idx >= 0) list[idx] = { ...list[idx], ...next, appRole: next.appRole, role: next.role };
   else list.push(next);
   writeAll(list);
   return next;

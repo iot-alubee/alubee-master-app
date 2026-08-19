@@ -9,7 +9,6 @@ import {
   normalizeAppMobile,
   mobilesMatch,
   markAppRequestNotifRead,
-  notifIsForUser,
   getAppRequest,
   markRequestNotifsActioned,
   isRequestPendingForUser,
@@ -18,6 +17,7 @@ import ITTicketActions from './ITTicketActions';
 import { itTicketStatus } from '../utils/itRequestService';
 import { updateTask } from '../utils/taskService';
 import { approvalRolesMatch } from '../data/appRoles';
+import { notifVisibleToUser } from '../utils/settingsService';
 
 // ── Tab definitions ────────────────────────────────────────────────────────────
 const TABS = [
@@ -938,19 +938,12 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
     return () => { cancelled = true; };
   }, [initialRequestId]);
 
-  // Show notifications meant for this user (mobile-first + role backup for request notifs)
-  const forMe = notifs.filter((n) => {
-    if (n.targetMobile || n.nextApproverMobile || n.targetRole || n._source === 'app_request') {
-      return notifIsForUser(n, userMobile, userAppRole);
-    }
-    if (!n.targetEmail && !n.nextApproverEmail) return true;
-    const email = String(userEmail || '').toLowerCase();
-    if (!email) return true;
-    return (
-      String(n.targetEmail || '').toLowerCase() === email ||
-      String(n.nextApproverEmail || '').toLowerCase() === email
-    );
-  });
+  // MD/JMD: all module alerts (minus Settings mutes). Others: only their own.
+  const forMe = notifs.filter((n) => notifVisibleToUser(n, userProfile || {
+    mobile: userMobile,
+    appRole: userAppRole,
+    email: userEmail,
+  }, null));
 
   // Count per tab
   const unread = forMe.filter(n=>!n.read).length;

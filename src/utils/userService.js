@@ -38,6 +38,7 @@ import {
   getSeededUserByMobile,
   getSeededUserByAuthEmail,
   suggestFromWorkEmail,
+  resolveStoredAppRole,
 } from '../data/appRoles';
 import {
   listLocalUsers,
@@ -126,7 +127,7 @@ async function ensureAuthAccount(secondaryAuth, authEmail, authPassword, mobile)
 
 export function profileFromDoc(id, data) {
   if (!data) return null;
-  const appRole = data.role || data.appRole;
+  const appRole = resolveStoredAppRole(data);
   const pageAccess = roleHasFullAccess(appRole)
     ? FULL_ACCESS_SCREEN_IDS
     : Array.isArray(data.pageAccess)
@@ -156,11 +157,30 @@ export function profileFromDoc(id, data) {
   };
 }
 
+function profileFromCacheRecord(u) {
+  if (!u) return null;
+  return profileFromDoc(u.id, { ...u, appRole: resolveStoredAppRole(u), role: resolveStoredAppRole(u) });
+}
+
+async function getAppUserByDocId(id) {
+  if (!id) return null;
+  try {
+    const snap = await getDoc(doc(db, USERS_COLLECTION, id));
+    if (snap.exists()) return profileFromDoc(snap.id, snap.data());
+  } catch (_) {}
+  return null;
+}
+
 export async function getUserByMobile(mobile) {
   const seeded = getSeededUserByMobile(mobile);
   if (seeded) return { ...seeded };
   const m = normalizeMobile(mobile);
   if (!m) return null;
+
+  // Direct document id — Android often cannot run collection queries
+  const byId = await getAppUserByDocId(`u_${m}`);
+  if (byId && byId.active !== false) return byId;
+
   try {
     const q = query(collection(db, USERS_COLLECTION), where('mobile', '==', m));
     const snap = await getDocs(q);
@@ -171,13 +191,15 @@ export async function getUserByMobile(mobile) {
   } catch (err) {
     console.warn('getUserByMobile Firestore unavailable', err?.code || err?.message);
   }
-  const local = getLocalUserByMobile(m);
-  if (local) return profileFromDoc(local.id, { ...local, role: local.appRole || local.role });
+
   try {
     const shared = await readSharedUsers();
     const hit = shared.find((u) => u.mobile === m && u.active !== false);
-    if (hit) return profileFromDoc(hit.id, { ...hit, role: hit.appRole || hit.role });
+    if (hit) return profileFromCacheRecord(hit);
   } catch (_) {}
+
+  const local = getLocalUserByMobile(m);
+  if (local) return profileFromCacheRecord(local);
   return null;
 }
 
@@ -185,8 +207,14 @@ export async function getUserByAuthEmail(email) {
   const seeded = getSeededUserByAuthEmail(email);
   if (seeded) return { ...seeded };
   if (!email) return null;
+  const e = String(email).toLowerCase();
+  const mobileMatch = e.match(/^(\d{10})@mobile\.alubee\.com$/);
+  if (mobileMatch) {
+    const byMobile = await getUserByMobile(mobileMatch[1]);
+    if (byMobile) return byMobile;
+  }
   try {
-    const q = query(collection(db, USERS_COLLECTION), where('authEmail', '==', email.toLowerCase()));
+    const q = query(collection(db, USERS_COLLECTION), where('authEmail', '==', e));
     const snap = await getDocs(q);
     if (!snap.empty) {
       const d = snap.docs[0];
@@ -195,14 +223,13 @@ export async function getUserByAuthEmail(email) {
   } catch (err) {
     console.warn('getUserByAuthEmail Firestore unavailable', err?.code || err?.message);
   }
-  const local = getLocalUserByAuthEmail(email);
-  if (local) return profileFromDoc(local.id, { ...local, role: local.appRole || local.role });
   try {
     const shared = await readSharedUsers();
-    const e = String(email).toLowerCase();
     const hit = shared.find((u) => (u.authEmail || u.email || '').toLowerCase() === e && u.active !== false);
-    if (hit) return profileFromDoc(hit.id, { ...hit, role: hit.appRole || hit.role });
+    if (hit) return profileFromCacheRecord(hit);
   } catch (_) {}
+  const local = getLocalUserByAuthEmail(email);
+  if (local) return profileFromCacheRecord(local);
   return null;
 }
 
@@ -246,6 +273,11 @@ export async function getUserByAuthUid(uid) {
   } catch (err) {
     console.warn('getUserByAuthUid Firestore unavailable', err?.code || err?.message);
   }
+  try {
+    const shared = await readSharedUsers();
+    const hit = shared.find((u) => u.authUid === uid && u.active !== false);
+    if (hit) return profileFromCacheRecord(hit);
+  } catch (_) {}
   return null;
 }
 

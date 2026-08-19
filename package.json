@@ -24,6 +24,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "android:sync": "react-scripts build && npx cap sync android",
     "test": "react-scripts test"
   },
   "browserslist": {

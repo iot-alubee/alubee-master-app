@@ -237,20 +237,22 @@ export function getWebPushPromptState() {
     return {
       show: true,
       canEnable: true,
-      message: 'iPhone alerts are allowed. Tap Enable once more so Alubee can finish connecting push.',
+      message: 'Alerts are allowed. Tap Enable once more so Alubee can finish connecting push.',
     };
   }
   if (Notification.permission === 'denied') {
     return {
       show: true,
       canEnable: false,
-      message: 'Notifications are blocked. On iPhone: Settings → Alubee → Notifications → Allow.',
+      message: isIosDevice()
+        ? 'Notifications are blocked. On iPhone: Settings → Alubee → Notifications → Allow.'
+        : 'Notifications are blocked. In Chrome: tap the lock icon next to the address → Notifications → Allow.',
     };
   }
   return {
     show: true,
     canEnable: true,
-    message: 'Tap Enable so Alubee can send request and task alerts on this iPhone.',
+    message: 'Tap Enable so Alubee can send request and task alerts on this phone (works from the Home Screen icon too).',
   };
 }
 

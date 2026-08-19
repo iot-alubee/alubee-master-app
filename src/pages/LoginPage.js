@@ -186,7 +186,7 @@ export default function LoginPage() {
           <p style={s.footer}>Sign in with PIN once. Then enable fingerprint / face on the next popup.</p>
         )}
 
-        <p style={s.footer}>App build 110 · Android users + biometric</p>
+        <p style={s.footer}>App build 112 · Android users + biometric</p>
         {!android && <p style={s.footer}>Forgot PIN? Contact your system administrator.</p>}
       </div>
 

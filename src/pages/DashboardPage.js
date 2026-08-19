@@ -56,7 +56,7 @@ import SettingsPage from './SettingsPage';
 import HRDashboard from './HRDashboard';
 import ITDashboard from './ITDashboard';
 import { canAccessScreen, getRoleLabel, roleHasFullAccess } from '../data/appRoles';
-import { canAccessSettings, subscribeNotifPrefs, filterNotifsByPrefs } from '../utils/settingsService';
+import { canAccessSettings, subscribeNotifPrefs, filterNotifsForUser } from '../utils/settingsService';
 import { isAndroidApp } from '../utils/phoneNumbers';
 import { consumePendingNotifTap } from '../utils/mobileApp';
 import {
@@ -874,27 +874,24 @@ function DashboardInner({dark,setDark}) {
     return()=>unsub&&unsub();
   },[view,userProfile,isOwner,unit]);
 
-  // Legacy task/security notifs (owner) + request notifs (own store, by mobile)
+  // Request notifs (targeted) + module notifs (MD/JMD see all; others only personal)
   useEffect(()=>{
     let legacyNotifs = [];
     let requestNotifs = [];
-    const emit = () => setNotifs(filterNotifsByPrefs([...requestNotifs, ...legacyNotifs], notifPrefs));
+    const emit = () => setNotifs(filterNotifsForUser([...requestNotifs, ...legacyNotifs], userProfile, notifPrefs));
     const unsubReq = subscribeAppRequestNotifications((list) => {
       requestNotifs = list || [];
       emit();
     });
-    let unsubLegacy = () => {};
-    if (isOwner) {
-      unsubLegacy = subscribeNotifications(unit, (list) => {
-        legacyNotifs = list || [];
-        emit();
-      });
-    }
+    const unsubLegacy = subscribeNotifications(unit, (list) => {
+      legacyNotifs = list || [];
+      emit();
+    });
     return () => {
       unsubReq && unsubReq();
       unsubLegacy && unsubLegacy();
     };
-  },[isOwner,unit,notifPrefs]);
+  },[unit,notifPrefs,userProfile]);
 
   const myMobile = getProfileMobile(userProfile);
   const myAppRole = userProfile?.appRole;

@@ -126,7 +126,7 @@ export default function SettingsPage({ dark = true, userProfile, onBack }) {
         <div style={card(dark)}>
           <div style={{ fontWeight: 800, color: dark ? '#fff' : '#0f172a', marginBottom: 6 }}>Module alerts</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 14 }}>
-            Turn off alerts you do not want. Approval notifications cannot be switched off.
+            MD and JMD receive every module alert. Turn off any you do not want. Approval notifications cannot be switched off. Other users only get alerts for their own tasks and requests.
           </div>
 
           <div style={row(dark, true)}>

@@ -63,19 +63,21 @@ async function resolveProfile(user) {
   if (!user) return null;
   const seeded = getSeededUserByAuthEmail(user.email);
   if (seeded) return withAuthMobile({ ...seeded }, user);
+  const mobile = mobileFromAuthEmail(user.email);
   try {
-    const byUid = await getUserByAuthUid(user.uid);
-    if (byUid) return withAuthMobile(byUid, user);
-    const byEmail = await getUserByAuthEmail(user.email);
-    if (byEmail) return withAuthMobile(byEmail, user);
-    const mobile = mobileFromAuthEmail(user.email);
+    // Mobile login must follow the phone number — not a stale UID/local MD cache
     if (mobile) {
       const byMobile = await getUserByMobile(mobile);
       if (byMobile) return withAuthMobile(byMobile, user);
     }
+    const byUid = await getUserByAuthUid(user.uid);
+    if (byUid) return withAuthMobile(byUid, user);
+    const byEmail = await getUserByAuthEmail(user.email);
+    if (byEmail) return withAuthMobile(byEmail, user);
   } catch (err) {
     console.warn('Firestore profile lookup failed', err?.code || err?.message);
   }
+  if (mobile) return null;
   return withAuthMobile(mergeLegacyProfile(user), user);
 }
 

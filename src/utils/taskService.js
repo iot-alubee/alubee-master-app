@@ -28,7 +28,11 @@ export async function createTask(data, userProfile) {
     message: `${userProfile.name} → ${data.assignedToPersonName || data.assignedToDept || 'General'}: ${data.description?.slice(0, 60)}`,
     taskId:  ref.id,
     raisedBy: userProfile.name,
+    raisedByName: userProfile.name,
+    raisedById: userProfile.id,
     assignedTo: data.assignedToPersonName || '',
+    assignedToPersonName: data.assignedToPersonName || '',
+    assignedPersonId: data.assignedPersonId || data.assignedToPersonId || '',
     dept: data.assignedToDept || userProfile.dept,
   });
   return ref;

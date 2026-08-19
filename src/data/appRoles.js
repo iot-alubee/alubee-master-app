@@ -47,6 +47,18 @@ export function getRoleLabel(roleId) {
   return APP_ROLES.find((r) => r.id === roleId)?.label || roleId || '—';
 }
 
+export function isKnownAppRole(roleId) {
+  return APP_ROLES.some((r) => r.id === roleId);
+}
+
+/** Prefer Admin appRole (jmd_2, md, …). Ignore leftover legacy values like owner. */
+export function resolveStoredAppRole(data) {
+  if (!data || typeof data !== 'object') return '';
+  if (isKnownAppRole(data.appRole)) return data.appRole;
+  if (isKnownAppRole(data.role)) return data.role;
+  return data.appRole || data.role || '';
+}
+
 export function isJmdRole(roleId) {
   return roleId === 'jmd_1' || roleId === 'jmd_2';
 }

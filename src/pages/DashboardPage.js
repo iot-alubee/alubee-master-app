@@ -52,9 +52,11 @@ import MaintenanceDashboard from './MaintenanceDashboard';
 import CustomerDashboard from './CustomerDashboard';
 import MigrateCustomerData from './MigrateCustomerData';
 import AdminPanel from './AdminPanel';
+import SettingsPage from './SettingsPage';
 import HRDashboard from './HRDashboard';
 import ITDashboard from './ITDashboard';
 import { canAccessScreen, getRoleLabel, roleHasFullAccess } from '../data/appRoles';
+import { canAccessSettings, subscribeNotifPrefs, filterNotifsByPrefs } from '../utils/settingsService';
 import { isAndroidApp } from '../utils/phoneNumbers';
 import { consumePendingNotifTap } from '../utils/mobileApp';
 import {
@@ -764,6 +766,8 @@ function DashboardInner({dark,setDark}) {
   const [showAdmin,     setShowAdmin]     = useState(() => {
     try { return sessionStorage.getItem('alubee_show_admin') === '1'; } catch { return false; }
   });
+  const [showSettings,  setShowSettings]  = useState(false);
+  const [notifPrefs,    setNotifPrefs]    = useState({});
   const [showCustMigrate, setShowCustMigrate] = useState(false);
   const canScreen = (id) => canAccessScreen(userProfile, id);
   const [pendingVisitors, setPendingVisitors] = useState([]);
@@ -812,7 +816,7 @@ function DashboardInner({dark,setDark}) {
       const tab = detail?.tab || null;
       setShowSecurity(false); setShowExecSummary(false);
       setShowERP(false); setShowStores(false); setShowManpower(false);
-      setShowAgeing(false); setShowAdmin(false); setShowNotifs(false); setShowIT(false); setShowHR(false);
+      setShowAgeing(false); setShowAdmin(false); setShowSettings(false); setShowNotifs(false); setShowIT(false); setShowHR(false);
       if (screen === 'requests' || detail?.type === 'request') {
         if (detail?.requestId) {
           setOpenNotifRequestId(detail.requestId);
@@ -874,7 +878,7 @@ function DashboardInner({dark,setDark}) {
   useEffect(()=>{
     let legacyNotifs = [];
     let requestNotifs = [];
-    const emit = () => setNotifs([...requestNotifs, ...legacyNotifs]);
+    const emit = () => setNotifs(filterNotifsByPrefs([...requestNotifs, ...legacyNotifs], notifPrefs));
     const unsubReq = subscribeAppRequestNotifications((list) => {
       requestNotifs = list || [];
       emit();
@@ -890,10 +894,17 @@ function DashboardInner({dark,setDark}) {
       unsubReq && unsubReq();
       unsubLegacy && unsubLegacy();
     };
-  },[isOwner,unit]);
+  },[isOwner,unit,notifPrefs]);
 
   const myMobile = getProfileMobile(userProfile);
   const myAppRole = userProfile?.appRole;
+  useEffect(() => {
+    if (!myMobile) {
+      setNotifPrefs({});
+      return;
+    }
+    return subscribeNotifPrefs(myMobile, setNotifPrefs);
+  }, [myMobile]);
   const [pendingApprovalCount, setPendingApprovalCount] = useState(0);
   useEffect(() => {
     if (!myMobile && !myAppRole) {
@@ -979,10 +990,30 @@ function DashboardInner({dark,setDark}) {
   const navBtn=a=>({background:a?'var(--accent-glass)':'transparent',border:'none',borderLeft:a?'3px solid var(--accent)':'3px solid transparent',borderRadius:'var(--radius-sm)',padding:'8px 10px',color:a?'var(--accent)':'var(--text-secondary)',fontSize:12,fontWeight:a?700:400,cursor:'pointer',textAlign:'left',fontFamily:'var(--font-sans)',transition:'all var(--t-fast)',width:'100%',display:'block'});
 
   /** Leave Admin (and keep it mounted only while open) when switching screens — avoids remount/flicker loops. */
-  const leaveAdmin = () => setShowAdmin(false);
+  const leaveAdmin = () => { setShowAdmin(false); setShowSettings(false); };
+  const closeModuleScreens = () => {
+    setShowAgeing(false); setShowERP(false); setShowStores(false);
+    setShowExecSummary(false); setShowManpower(false); setShowRevenue(false);
+    setShowSupplier(false); setShowRequests(false); setShowMaintenance(false);
+    setShowU2Migrate(false); setShowChildParts(false); setShowLogistics(false);
+    setShowHR(false); setShowIT(false); setShowCustomer(false); setShowSecurity(false);
+  };
   const openScreen = (setter) => {
     setShowAdmin(false);
+    setShowSettings(false);
     setter(true);
+    setSidebarOpen(false);
+  };
+  const openSettings = () => {
+    closeModuleScreens();
+    setShowAdmin(false);
+    setShowSettings(true);
+    setSidebarOpen(false);
+  };
+  const openAdmin = () => {
+    closeModuleScreens();
+    setShowSettings(false);
+    setShowAdmin(true);
     setSidebarOpen(false);
   };
 
@@ -1040,8 +1071,8 @@ function DashboardInner({dark,setDark}) {
         </div>
 
         <nav style={{display:'flex',flexDirection:'column',gap:3,marginBottom:14}}>
-          {canScreen('tasks')&&<button style={navBtn(activeTab==='tasks'&&!showAdmin)} onClick={()=>{leaveAdmin();setActiveTab('tasks');if(isMobile)setSidebarOpen(false);}}>📋 Tasks</button>}
-          {canScreen('dashboard')&&<button style={navBtn(activeTab==='dashboard'&&!showAdmin)} onClick={()=>{leaveAdmin();setActiveTab('dashboard');if(isMobile)setSidebarOpen(false);}}>🏠 Dashboard</button>}
+          {canScreen('tasks')&&<button style={navBtn(activeTab==='tasks'&&!showAdmin&&!showSettings)} onClick={()=>{leaveAdmin();setActiveTab('tasks');if(isMobile)setSidebarOpen(false);}}>📋 Tasks</button>}
+          {canScreen('dashboard')&&<button style={navBtn(activeTab==='dashboard'&&!showAdmin&&!showSettings)} onClick={()=>{leaveAdmin();setActiveTab('dashboard');if(isMobile)setSidebarOpen(false);}}>🏠 Dashboard</button>}
           {canScreen('customers')&&<button style={navBtn(showCustomer)} onClick={()=>openScreen(setShowCustomer)}>🚚 Dispatch</button>}
           {roleHasFullAccess(userProfile?.appRole)&&<button style={navBtn(false)} onClick={()=>openScreen(setShowU2Migrate)}>🔄 U2 Setup</button>}
           {canScreen('supplier')&&<button style={navBtn(showSupplier)} onClick={()=>openScreen(setShowSupplier)}>📦 Supplier</button>}
@@ -1053,7 +1084,7 @@ function DashboardInner({dark,setDark}) {
           {canScreen('ageing')&&<button style={navBtn(showAgeing)} onClick={()=>openScreen(setShowAgeing)}>📅 Ageing</button>}
           {canScreen('security')&&<button style={navBtn(showSecurity)} onClick={()=>openScreen(setShowSecurity)}>🔒 Security</button>}
           {canScreen('logistics')&&<button style={navBtn(showLogistics)} onClick={()=>openScreen(setShowLogistics)}>🚛 Logistics</button>}
-          {canScreen('admin')&&<button style={navBtn(showAdmin)} onClick={()=>{setShowAdmin(true);setSidebarOpen(false);}}>⚙️ Admin</button>}
+          {canScreen('admin')&&<button style={navBtn(showAdmin)} onClick={openAdmin}>⚙️ Admin</button>}
           {canScreen('erp')&&<button style={navBtn(showERP)} onClick={()=>openScreen(setShowERP)}>🗂 ERP Dashboard</button>}
           {canScreen('stores')&&<button style={navBtn(showStores)} onClick={()=>openScreen(setShowStores)}>🏪 Stores Dashboard</button>}
           {canScreen('hr')&&<button style={navBtn(showHR)} onClick={()=>openScreen(setShowHR)}>👔 HR</button>}
@@ -1086,6 +1117,9 @@ function DashboardInner({dark,setDark}) {
           </button>
         )}
         <button onClick={()=>setDark(d=>!d)} style={{background:'var(--glass-1)',border:'1px solid var(--border-subtle)',borderRadius:'var(--radius-sm)',padding:'8px 10px',color:'var(--text-muted)',fontSize:11,cursor:'pointer',textAlign:'left',fontFamily:'var(--font-sans)',marginBottom:6,width:'100%',transition:'all var(--t-fast)'}}>{dark?'☀ Light':'🌙 Dark'}</button>
+        {canAccessSettings(userProfile?.appRole)&&(
+          <button onClick={openSettings} style={{...navBtn(showSettings),marginBottom:6}}>⚙ Settings</button>
+        )}
         <button onClick={logout} style={{background:'var(--red-bg)',border:'1px solid rgba(239,68,68,0.2)',borderRadius:'var(--radius-sm)',padding:'8px 10px',color:'var(--red)',fontSize:11,cursor:'pointer',textAlign:'left',fontFamily:'var(--font-sans)',width:'100%',fontWeight:600,transition:'all var(--t-fast)'}}>← Sign Out</button>
       </aside>
 
@@ -1094,7 +1128,9 @@ function DashboardInner({dark,setDark}) {
 
       {/* MAIN */}
       <main style={{marginLeft:isMobile?0:220,flex:1,padding:isMobile?'0 0 80px':'24px 28px',minWidth:0,maxWidth:'100%'}}>
-        {showAdmin ? (
+        {showSettings ? (
+          <SettingsPage dark={dark} userProfile={userProfile} onBack={()=>setShowSettings(false)} />
+        ) : showAdmin ? (
           <AdminPanel dark={dark} onBack={()=>setShowAdmin(false)} />
         ) : (
         <>
@@ -1355,8 +1391,8 @@ function DashboardInner({dark,setDark}) {
       {isMobile&&(
         <div style={{position:'fixed',bottom:0,left:0,right:0,background:SIDE,borderTop:'1px solid rgba(255,255,255,0.1)',display:'flex',zIndex:60,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
           {[
-            {icon:'📋',label:'Tasks',   action:()=>{leaveAdmin();setActiveTab('tasks');},   active:activeTab==='tasks'&&!showAdmin},
-            {icon:'📊',label:'Dash',    action:()=>{leaveAdmin();setActiveTab('dashboard');},active:activeTab==='dashboard'&&!showAdmin&&(isOwner||isDeptHead)},
+            {icon:'📋',label:'Tasks',   action:()=>{leaveAdmin();setActiveTab('tasks');},   active:activeTab==='tasks'&&!showAdmin&&!showSettings},
+            {icon:'📊',label:'Dash',    action:()=>{leaveAdmin();setActiveTab('dashboard');},active:activeTab==='dashboard'&&!showAdmin&&!showSettings&&(isOwner||isDeptHead)},
             {icon:'🔔',label:'Alerts',  action:()=>setShowNotifs(x=>!x),    active:showNotifs, badge:bellCount},
             {icon:'➕',label:'New',      action:()=>{setEditTask(null);setShowModal(true);}, active:false, highlight:true},
             {icon:'≡', label:'Menu',    action:()=>setSidebarOpen(true),    active:sidebarOpen, menu:true},

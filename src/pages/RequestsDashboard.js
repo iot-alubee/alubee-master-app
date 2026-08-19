@@ -1,14 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import {
-  collection, addDoc, updateDoc, doc, query, where,
-  orderBy, onSnapshot, serverTimestamp, limit, getDoc, setDoc
-} from 'firebase/firestore';
-import { db } from '../firebase';
+import React, { useState, useEffect, useMemo } from 'react';
 import { findActiveUserByAppRole, listAppUsers } from '../utils/userService';
+import { getAvailability, isApproverOnline } from '../utils/settingsService';
 import { readSharedUsers } from '../utils/sharedUserStore';
 import { listLocalUsers } from '../utils/localUserStore';
 import {
-  APP_REQUESTS_COL,
   createAppRequest,
   updateAppRequest,
   deleteAppRequest,
@@ -27,38 +22,6 @@ import ITTicketActions from '../components/ITTicketActions';
 import { IT_CATEGORIES, findITSupervisor, itTicketStatus, isITSupervisorFor, isITAssignee, isITRequester } from '../utils/itRequestService';
 import { approvalRolesMatch } from '../data/appRoles';
 
-// ── Availability helpers ──────────────────────────────────────────────────────
-async function getAvailability(db_inst, collection_fn, doc_fn, getDoc_fn) {
-  try {
-    const snap = await getDoc_fn(doc_fn(db_inst, 'approver_availability', 'status'));
-    if (snap.exists()) return snap.data();
-  } catch(e) {}
-  return { jmd: 'Online', md: 'Online' };
-}
-
-function getFlowFromAvailability(avail, type, dept) {
-  const jmdOnline = avail?.jmd !== 'Offline';
-  const mdOnline  = avail?.md  !== 'Offline';
-
-  if (type === 'leave') {
-    // Leave: supervisor → hr → jmd (if online) → md (if online) → auto if both offline
-    const steps = [];
-    const supervisor = DEPT_SUPERVISOR[dept] || null;
-    if (supervisor && supervisor !== HR_EMAIL && supervisor !== JMD_EMAIL && supervisor !== MD_EMAIL)
-      steps.push({ role:'supervisor', email:supervisor, label:'Supervisor' });
-    steps.push({ role:'hr', email:HR_EMAIL, label:'HR' });
-    if (jmdOnline) steps.push({ role:'jmd', email:JMD_EMAIL, label:'JMD' });
-    if (mdOnline)  steps.push({ role:'md',  email:MD_EMAIL,  label:'MD'  });
-    return steps;
-  }
-
-  // OD / Visitor / IT / Maintenance
-  if (!jmdOnline && !mdOnline) return []; // auto approve
-  if (!jmdOnline) return [{ role:'md', email:MD_EMAIL, label:'MD' }];
-  if (!mdOnline)  return [{ role:'jmd', email:JMD_EMAIL, label:'JMD' }];
-  return [{ role:'jmd', email:JMD_EMAIL, label:'JMD' }, { role:'md', email:MD_EMAIL, label:'MD' }];
-}
-
 // ─── ROLE DEFINITIONS ────────────────────────────────────────────────────────
 // Approval flows:
 // OD / VISITOR / IT: employee → jmd → md
@@ -71,7 +34,6 @@ const UDHAY_EMAIL = 'udhay@alubee.com';
 const PPC_EMAILS  = ['gopi@alubee.com','udhay@alubee.com'];
 const PDC_ASSIGNEES  = [{name:'Mahendhiran',email:'mahendhiran@alubee.com'},{name:'Kalaivanan',email:'kalaivanan@alubee.com'}];
 const GEN_ASSIGNEES  = [{name:'Murugesh',email:'murugesh@alubee.com'},{name:'Kandhan',email:'kandhan@alubee.com'}];
-const AVAILABILITY_DOC = 'approver_availability';
 const MD_EMAIL  = 'md@alubee.com';
 const HR_EMAIL  = 'meena@alubee.com';
 
@@ -354,16 +316,24 @@ async function buildOdApprovalFlow(unit) {
   const mdUser = await findActiveUserByAppRole('md');
   const jmdMobile = getProfileMobile(jmdUser);
   const mdMobile = getProfileMobile(mdUser);
-  if (!jmdMobile) {
-    throw new Error(`${jmdLabel} is not set up yet. Create a user with role ${jmdLabel} and mobile in Admin Panel.`);
+  const avail = await getAvailability();
+  const steps = [];
+  if (isApproverOnline(jmdRole, avail)) {
+    if (!jmdMobile) {
+      throw new Error(`${jmdLabel} is not set up yet. Create a user with role ${jmdLabel} and mobile in Admin Panel.`);
+    }
+    steps.push({ role: jmdRole, mobile: jmdMobile, label: jmdLabel, name: jmdUser?.name || jmdLabel });
   }
-  if (!mdMobile) {
-    throw new Error('MD is not set up yet. Create a user with role MD and mobile in Admin Panel.');
+  if (isApproverOnline('md', avail)) {
+    if (!mdMobile) {
+      throw new Error('MD is not set up yet. Create a user with role MD and mobile in Admin Panel.');
+    }
+    steps.push({ role: 'md', mobile: mdMobile, label: 'MD', name: mdUser?.name || 'MD' });
   }
-  return [
-    { role: jmdRole, mobile: jmdMobile, label: jmdLabel, name: jmdUser?.name || jmdLabel },
-    { role: 'md', mobile: mdMobile, label: 'MD', name: mdUser?.name || 'MD' },
-  ];
+  if (!steps.length) {
+    throw new Error('Approvers are unavailable. JMD and MD cannot both be offline.');
+  }
+  return steps;
 }
 
 const buildVisitorApprovalFlow = buildOdApprovalFlow;
@@ -1591,8 +1561,6 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
     Object.values(DEPT_SUPERVISOR).includes(userEmail);
 
   const [requests,     setRequests]     = useState([]);
-  const [availability, setAvailability] = useState({ jmd:'Online', md:'Online' });
-  const [savingAvail,  setSavingAvail]  = useState(false);
   const [pendingAll,   setPendingAll]   = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [view,         setView]         = useState(initialView || 'my');
@@ -1604,13 +1572,6 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
     setView(initialView);
     if (initialView === 'new') setNewType((t) => t || 'od');
   }, [initialView]);
-
-  useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'approver_availability', 'status'), snap => {
-      if (snap.exists()) setAvailability(snap.data());
-    }, ()=>{});
-    return ()=>unsub();
-  }, []);
 
   // Pending for this mobile / role
   useEffect(() => {
@@ -1624,7 +1585,7 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
   useEffect(() => {
     setLoading(true);
     let unsub = () => {};
-    if (view === 'new' || view === 'availability') {
+    if (view === 'new') {
       setLoading(false);
       return;
     }
@@ -1642,17 +1603,6 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
     }
     return () => unsub && unsub();
   }, [userMobile, userEmail, view, isAdmin, appRole]);
-
-  async function toggleAvailability(role) {
-    setSavingAvail(true);
-    try {
-      const current = availability[role] || 'Online';
-      const next = current === 'Online' ? 'Offline' : 'Online';
-      const updated = { ...availability, [role]: next, updatedAt: new Date().toISOString() };
-      await setDoc(doc(db, 'approver_availability', 'status'), updated, { merge: true });
-    } catch(e) { alert('Failed: '+e.message); }
-    finally { setSavingAvail(false); }
-  }
 
   async function handleAction() {}
 
@@ -1675,12 +1625,10 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
     return base.filter(r => r.type === filter);
   })();
 
-  const canSeeAvail = appRole === 'jmd_1' || appRole === 'jmd_2' || appRole === 'md' || appRole === 'admin' || userProfile?.dept === 'security';
   const tabs = [
     { id:'my',      label:'My Requests', icon:'📋' },
     ...(isApprover ? [{ id:'pending', label:`Pending${myPending.length>0?' ('+myPending.length+')':''}`, icon:'⏳' }] : []),
     ...(isAdmin    ? [{ id:'all',     label:'All',    icon:'👁‍🗨' }] : []),
-    ...(canSeeAvail ? [{ id:'availability', label:'Status', icon:'🟢' }] : []),
     { id:'new',     label:'+ New',   icon:'✏️' },
   ];
 
@@ -1727,18 +1675,6 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
 
         <MyRequestAlerts userMobile={userMobile} userAppRole={appRole} />
 
-        {/* AVAILABILITY */}
-        {view === 'availability' && (
-          <AvailabilityPanel
-            availability={availability}
-            userEmail={userEmail}
-            isJMD={appRole === 'jmd_1' || appRole === 'jmd_2'}
-            isMD={appRole === 'md'}
-            onToggle={toggleAvailability}
-            saving={savingAvail}
-          />
-        )}
-
         {/* NEW REQUEST */}
         {view === 'new' && !newType && (
           <div>
@@ -1766,7 +1702,7 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
         {view === 'new' && newType === 'it' && <ITForm userProfile={userProfile} onSubmitted={()=>{setView('my');setNewType(null);}} onCancel={()=>setNewType(null)}/>}
 
         {/* REQUEST LIST */}
-        {view !== 'new' && view !== 'availability' && (
+        {view !== 'new' && (
           <>
             {/* Filter bar */}
             <div style={{display:'flex',gap:6,marginBottom:14,flexWrap:'wrap'}}>
@@ -1801,87 +1737,6 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-// ── AVAILABILITY PANEL ────────────────────────────────────────────────────────
-function AvailabilityPanel({ availability, userEmail, isJMD, isMD, onToggle, saving }) {
-  const jmdOnline = availability?.jmd !== 'Offline';
-  const mdOnline  = availability?.md  !== 'Offline';
-  const bothOffline = !jmdOnline && !mdOnline;
-
-  const roleCard = (role, label, email, isOnline, canToggle) => (
-    <div style={{background:'#fff',borderRadius:16,border:`2px solid ${isOnline?'#86efac':'#fca5a5'}`,padding:'20px 24px',marginBottom:16,boxShadow:'0 2px 10px rgba(0,0,0,0.06)'}}>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:12}}>
-        <div>
-          <div style={{fontWeight:900,fontSize:16,color:'#111827'}}>{label}</div>
-          <div style={{fontSize:12,color:'#6b7280',marginTop:2}}>{email}</div>
-          <div style={{marginTop:8,display:'flex',alignItems:'center',gap:8}}>
-            <div style={{width:12,height:12,borderRadius:'50%',background:isOnline?'#16a34a':'#dc2626',boxShadow:isOnline?'0 0 6px #16a34a':'0 0 6px #dc2626'}}/>
-            <span style={{fontWeight:800,fontSize:14,color:isOnline?'#16a34a':'#dc2626'}}>
-              {isOnline?'Online — Available for approvals':'Offline — Approvals routed away'}
-            </span>
-          </div>
-        </div>
-        {canToggle && (
-          <button onClick={()=>onToggle(role)} disabled={saving}
-            style={{padding:'12px 24px',borderRadius:12,border:'none',
-              background:isOnline?'#dc2626':'#16a34a',
-              color:'#fff',fontWeight:800,fontSize:14,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit',
-              opacity:saving?0.7:1}}>
-            {saving?'⏳ Saving…':isOnline?'🔴 Go Offline':'🟢 Go Online'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-
-  return (
-    <div>
-      <div style={{fontWeight:900,fontSize:16,color:'var(--text-primary)',marginBottom:4}}>🟢 Approver Availability</div>
-      <div style={{fontSize:12,color:'var(--text-secondary)',marginBottom:20}}>
-        Security can see this screen. Set your availability to route approvals correctly.
-      </div>
-
-      {bothOffline && (
-        <div style={{background:'#fef3c7',border:'2px solid #fde68a',borderRadius:12,padding:'14px 18px',marginBottom:16,display:'flex',alignItems:'center',gap:12}}>
-          <span style={{fontSize:24}}>⚠️</span>
-          <div>
-            <div style={{fontWeight:800,fontSize:14,color:'#b45309'}}>Both Approvers Offline — Auto Approve Mode</div>
-            <div style={{fontSize:12,color:'#92400e',marginTop:2}}>All new OD, Visitor and IT requests will be auto-approved when both are offline.</div>
-          </div>
-        </div>
-      )}
-
-      {/* Routing logic display */}
-      <div style={{background:'#f8fafc',borderRadius:12,padding:'14px 18px',marginBottom:20,border:'1px solid #e2e8f0'}}>
-        <div style={{fontWeight:700,fontSize:12,color:'#6b7280',textTransform:'uppercase',marginBottom:10}}>Current Approval Routing</div>
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
-          {[
-            { label:'OD Request',      flow: 'Unit I → JMD 1 → MD · Unit II → JMD 2 → MD' },
-            { label:'Visitor Request', flow: 'Unit I → JMD 1 → MD · Unit II → JMD 2 → MD' },
-            { label:'Leave Request',   flow: 'Employee → Reporting → JMD → MD · Supervisor → JMD → MD' },
-            { label:'IT',              flow: !jmdOnline&&!mdOnline?'Auto Approve':!jmdOnline?'MD only':!mdOnline?'JMD only (final)':'JMD → MD' },
-          ].map(r=>(
-            <div key={r.label} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'8px 12px',background:'#fff',borderRadius:8,border:'1px solid #e2e8f0'}}>
-              <span style={{fontSize:13,fontWeight:700,color:'#374151'}}>{r.label}</span>
-              <span style={{fontSize:12,fontWeight:700,color:r.flow.includes('Auto')?'#16a34a':r.flow.includes('Hold')?'#dc2626':'#1e40af',background:r.flow.includes('Auto')?'#f0fdf4':r.flow.includes('Hold')?'#fef2f2':'#eff6ff',borderRadius:6,padding:'3px 10px'}}>
-                {r.flow}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {roleCard('jmd', 'JMD', 'From Admin Panel (mobile)', jmdOnline, isJMD)}
-      {roleCard('md',  'MD',  'From Admin Panel (mobile)', mdOnline,  isMD)}
-
-      {!isJMD && !isMD && (
-        <div style={{background:'#eff6ff',borderRadius:12,padding:'14px 18px',fontSize:13,color:'#1e40af',fontWeight:600,textAlign:'center'}}>
-          ℹ You can view availability but only JMD and MD can change their own status.
-        </div>
-      )}
     </div>
   );
 }

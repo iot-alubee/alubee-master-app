@@ -3,9 +3,9 @@
 import { getUserByEmail } from './orgData';
 
 export const APP_ROLES = [
-  { id: 'jmd_1', label: 'JMD 1', fullAccess: true },
-  { id: 'jmd_2', label: 'JMD 2', fullAccess: true },
-  { id: 'md', label: 'MD', fullAccess: true },
+  { id: 'jmd_1', label: 'JMD 1', fullAccess: false },
+  { id: 'jmd_2', label: 'JMD 2', fullAccess: false },
+  { id: 'md', label: 'MD', fullAccess: false },
   { id: 'member_supervisor', label: 'Member - Supervisor', fullAccess: false },
   { id: 'member_employee', label: 'Member - Employee', fullAccess: false },
   { id: 'admin', label: 'Admin', fullAccess: true },
@@ -47,8 +47,18 @@ export function getRoleLabel(roleId) {
   return APP_ROLES.find((r) => r.id === roleId)?.label || roleId || '—';
 }
 
-/** Member - Supervisor reports to JMD of their unit */
+export function isJmdRole(roleId) {
+  return roleId === 'jmd_1' || roleId === 'jmd_2';
+}
+
+/** Admin picks screens for everyone except Admin (full access). */
+export function roleNeedsPageAccess(roleId) {
+  return !!roleId && !roleHasFullAccess(roleId);
+}
+
+/** Member - Supervisor reports to JMD of their unit. JMD reports to MD. */
 export function autoReportingTo(roleId, unitId) {
+  if (isJmdRole(roleId)) return 'MD';
   if (roleId !== 'member_supervisor') return '';
   if (unitId === 'u1') return 'JMD 1';
   if (unitId === 'u2') return 'JMD 2';
@@ -99,7 +109,7 @@ export function approvalRolesMatch(appRole, stepRole, reqUnit) {
  * Existing screens check role === 'owner' | 'dept_head' | 'member' | 'viewer'
  */
 export function toLegacyRole(roleId) {
-  if (roleHasFullAccess(roleId)) return 'owner';
+  if (roleHasFullAccess(roleId) || roleId === 'md' || isJmdRole(roleId)) return 'owner';
   if (roleId === 'member_supervisor') return 'dept_head';
   if (roleId === 'member_employee') return 'member';
   return 'member';
@@ -138,6 +148,8 @@ export function pageAccessForOrgUser(legacyUser) {
   const isDH = role === 'dept_head';
   const isPPC = dept === 'ppc';
 
+  const mappedRole = legacyRoleToAppRole(legacyUser);
+  if (mappedRole === 'md' || isJmdRole(mappedRole)) return [];
   if (isOwner) return [...FULL_ACCESS_SCREEN_IDS];
 
   const screens = new Set(['tasks', 'requests', 'maintenance', 'logistics']);

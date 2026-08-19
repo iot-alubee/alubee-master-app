@@ -7,6 +7,8 @@ import {
   APP_SCREENS,
   autoReportingTo,
   roleHasFullAccess,
+  roleNeedsPageAccess,
+  isJmdRole,
   roleNeedsUnit,
   roleNeedsReportingTo,
   unitForAppRole,
@@ -91,27 +93,28 @@ export default function AdminPanel({ dark = true, onBack }) {
     return () => { delete document.body.dataset.alubeeAdminBusy; };
   }, [modalOpen]);
 
-  const needsPageAccess = form.role === 'member_supervisor' || form.role === 'member_employee';
-  const reportingLocked = form.role === 'member_supervisor';
+  const needsPageAccess = roleNeedsPageAccess(form.role);
+  const reportingLocked = form.role === 'member_supervisor' || isJmdRole(form.role);
   const isEmployee = form.role === 'member_employee';
   const isMd = form.role === 'md';
-  const isJmd = form.role === 'jmd_1' || form.role === 'jmd_2';
+  const isJmd = isJmdRole(form.role);
   const isEdit = !!editingId;
 
-  // MD: no unit / reporting. JMD 1 → Unit I, JMD 2 → Unit II. Supervisor → JMD by unit.
+  // MD: no unit / reporting. JMD 1 → Unit I, JMD 2 → Unit II. JMD → MD. Supervisor → JMD by unit.
   useEffect(() => {
     if (!modalOpen) return;
     setForm((f) => {
       const unit = unitForAppRole(f.role, f.unit);
       let reportingTo = f.reportingTo;
       if (!roleNeedsReportingTo(f.role)) reportingTo = '';
+      else if (isJmdRole(f.role)) reportingTo = 'MD';
       else if (f.role === 'member_supervisor' && unit) reportingTo = autoReportingTo(f.role, unit);
       if (unit === f.unit && reportingTo === f.reportingTo) return f;
       return { ...f, unit, reportingTo };
     });
   }, [form.role, form.unit, modalOpen]);
 
-  // Full access roles get all screens
+  // Admin role always has every screen
   useEffect(() => {
     if (!modalOpen) return;
     if (roleHasFullAccess(form.role)) {
@@ -161,8 +164,15 @@ export default function AdminPanel({ dark = true, onBack }) {
           next.reportingTo = '';
         } else if (next.role === 'member_supervisor' && next.unit) {
           next.reportingTo = autoReportingTo(next.role, next.unit);
-        } else if ((next.role === 'jmd_1' || next.role === 'jmd_2') && !next.reportingTo) {
+        } else if (isJmdRole(next.role)) {
           next.reportingTo = 'MD';
+        }
+        if (key === 'role') {
+          if (roleHasFullAccess(next.role)) {
+            next.pageAccess = APP_SCREENS.map((s) => s.id);
+          } else if (roleHasFullAccess(f.role)) {
+            next.pageAccess = [];
+          }
         }
       }
       return next;
@@ -189,15 +199,15 @@ export default function AdminPanel({ dark = true, onBack }) {
         role: sug.role || f.role,
         pageAccess: roleHasFullAccess(sug.role)
           ? APP_SCREENS.map((s) => s.id)
-          : (sug.pageAccess?.length ? sug.pageAccess : f.pageAccess),
+          : (Array.isArray(sug.pageAccess) ? sug.pageAccess : f.pageAccess),
       };
       next.unit = unitForAppRole(next.role, next.unit);
       if (!roleNeedsReportingTo(next.role)) {
         next.reportingTo = '';
+      } else if (isJmdRole(next.role)) {
+        next.reportingTo = 'MD';
       } else if (next.role === 'member_supervisor' && next.unit) {
         next.reportingTo = autoReportingTo(next.role, next.unit);
-      } else if (roleHasFullAccess(next.role) && !next.reportingTo) {
-        next.reportingTo = 'MD';
       } else if (sug.reportingTo && !f.reportingTo) {
         next.reportingTo = sug.reportingTo;
       }
@@ -288,7 +298,7 @@ export default function AdminPanel({ dark = true, onBack }) {
       return;
     }
     if (needsPageAccess && (!form.pageAccess || form.pageAccess.length === 0)) {
-      setError('Select at least one screen for Member roles');
+      setError('Select at least one screen');
       return;
     }
     if (isEmployee && supervisorOptions.length === 0) {
@@ -337,9 +347,7 @@ export default function AdminPanel({ dark = true, onBack }) {
           role: f.role,
           reportingTo: !roleNeedsReportingTo(f.role)
             ? ''
-            : f.role === 'member_supervisor' && f.unit
-              ? autoReportingTo(f.role, f.unit)
-              : '',
+            : autoReportingTo(f.role, f.unit) || '',
           pageAccess: roleHasFullAccess(f.role) ? APP_SCREENS.map((s) => s.id) : [],
         }));
         setModalOpen(true);
@@ -367,7 +375,7 @@ export default function AdminPanel({ dark = true, onBack }) {
       <div style={wrap(dark)}>
         <button onClick={onBack} style={backBtn}>← Back</button>
         <h2 style={{ color: dark ? '#fff' : '#111' }}>Access denied</h2>
-        <p style={{ color: '#94a3b8' }}>Only Admin / MD / JMD can manage users.</p>
+        <p style={{ color: '#94a3b8' }}>You need Admin screen access to manage users.</p>
       </div>
     );
   }
@@ -543,7 +551,12 @@ export default function AdminPanel({ dark = true, onBack }) {
 
                 {!isMd && (
                 <Field label="Reporting to *">
-                  {reportingLocked ? (
+                  {isJmd ? (
+                    <>
+                      <input style={{ ...input(dark), opacity: 0.85 }} value={form.reportingTo || 'MD'} readOnly required />
+                      <div style={hint}>Auto-filled: JMD reports to MD</div>
+                    </>
+                  ) : reportingLocked ? (
                     <>
                       <input style={{ ...input(dark), opacity: 0.85 }} value={form.reportingTo} readOnly required />
                       <div style={hint}>
@@ -663,11 +676,11 @@ export default function AdminPanel({ dark = true, onBack }) {
                   <label style={labelStyle}>Screens they can access *</label>
                   {roleHasFullAccess(form.role) ? (
                     <div style={{ fontSize: 12, color: '#4ade80', background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', borderRadius: 8, padding: '10px 12px', marginTop: 8 }}>
-                      Full access (same as Admin) — all screens included.
+                      Full access — all screens included.
                     </div>
                   ) : (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-                      {APP_SCREENS.filter((s) => s.id !== 'admin').map((s) => {
+                      {(isJmd || isMd ? APP_SCREENS : APP_SCREENS.filter((s) => s.id !== 'admin')).map((s) => {
                         const on = form.pageAccess?.includes(s.id);
                         return (
                           <button
@@ -690,6 +703,9 @@ export default function AdminPanel({ dark = true, onBack }) {
                         );
                       })}
                     </div>
+                  )}
+                  {needsPageAccess && (
+                    <div style={hint}>Select the pages this person can open. Settings stays available for JMD, MD, and Admin.</div>
                   )}
                 </div>
               )}

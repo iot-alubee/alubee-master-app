@@ -422,7 +422,7 @@ export async function createAppUser(payload) {
   const authEmail = mobileToAuthEmail(mobile);
   const authPassword = pinToAuthPassword(mobile, pin);
   const reportingTo = roleNeedsReportingTo(role)
-    ? (payload.reportingTo || autoReportingTo(role, unit) || '')
+    ? (autoReportingTo(role, unit) || payload.reportingTo || '')
     : '';
 
   if (roleNeedsReportingTo(role) && !reportingTo) throw new Error('Reporting to is required');
@@ -441,7 +441,7 @@ export async function createAppUser(payload) {
       : fromLinked;
 
   if (!roleHasFullAccess(payload.role) && pageAccess.length === 0) {
-    throw new Error('Select at least one screen for this member');
+    throw new Error('Select at least one screen');
   }
 
   if (linkedEmail) {
@@ -538,7 +538,7 @@ export async function updateAppUser(userId, payload) {
   const employeeId = String(payload.employeeId ?? existing.employeeId).trim();
   const employeeName = String(payload.employeeName ?? existing.employeeName).trim();
   const reportingTo = roleNeedsReportingTo(role)
-    ? (payload.reportingTo || autoReportingTo(role, unit) || existing.reportingTo || '')
+    ? (autoReportingTo(role, unit) || payload.reportingTo || existing.reportingTo || '')
     : '';
 
   if (!department || !employeeId || !employeeName || !role) {
@@ -554,7 +554,7 @@ export async function updateAppUser(userId, payload) {
       : existing.pageAccess || [];
 
   if (!roleHasFullAccess(role) && pageAccess.length === 0) {
-    throw new Error('Select at least one screen for Member roles');
+    throw new Error('Select at least one screen');
   }
 
   const updates = {

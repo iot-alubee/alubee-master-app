@@ -1,6 +1,6 @@
 
 // ── Soft update check (do NOT reload on every Excel/tab focus) ─────────────────
-const APP_VERSION = '117';
+const APP_VERSION = '118';
 let _versionCheckBusy = false;
 async function checkVersion() {
   if (_versionCheckBusy) return;
@@ -28,7 +28,7 @@ async function checkVersion() {
 // Occasional check only — NOT on every window focus (that broke Excel copy/paste)
 setInterval(checkVersion, 15 * 60 * 1000);
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import useIsMobile from '../hooks/useIsMobile';
 import { useAuth } from '../contexts/AuthContext';
 import { DEPARTMENTS, getDeptLabel, getDeptColor, getUsersByUnit } from '../data/orgData';
@@ -745,6 +745,7 @@ function DashboardInner({dark,setDark}) {
   const [drillDept,     setDrillDept]     = useState(null);
   const [showMigrate,   setShowMigrate]   = useState(false);
   const [showNotifs,    setShowNotifs]    = useState(false);
+  const [notifCenterTab, setNotifCenterTab] = useState('all');
   const [openNotifRequestId, setOpenNotifRequestId] = useState(null);
   const [showAgeing,    setShowAgeing]    = useState(false);
   const [showERP,       setShowERP]       = useState(false);
@@ -810,27 +811,46 @@ function DashboardInner({dark,setDark}) {
   // Store pending deep link to handle after security panel mounts
   const [pendingSecurityTab, setPendingSecurityTab] = useState(null);
 
+  const profileRef = useRef(userProfile);
+  profileRef.current = userProfile;
+
   useEffect(()=>{
     function resetModules() {
       setShowSecurity(false); setShowExecSummary(false);
       setShowERP(false); setShowStores(false); setShowManpower(false);
       setShowAgeing(false); setShowAdmin(false); setShowSettings(false);
-      setShowNotifs(false); setShowIT(false); setShowHR(false);
+      setShowIT(false); setShowHR(false);
       setShowRequests(false); setShowMaintenance(false);
       setShowRevenue(false); setShowSupplier(false); setShowCustomer(false);
       setShowLogistics(false); setShowChildParts(false); setShowU2Migrate(false);
+    }
+    function openApprovalBell(requestId, tab) {
+      resetModules();
+      setRequestView('pending');
+      setNotifCenterTab(tab === 'my' ? 'all' : 'approvals');
+      setOpenNotifRequestId(requestId || null);
+      setShowNotifs(true);
     }
     function openFromNotif(raw) {
       const dest = resolveNotifDestination(raw || {});
       const screen = dest.screen || 'dashboard';
       const tab = dest.tab || null;
+      const profile = profileRef.current;
+      const leadership = isBroadcastNotifRole(profile?.appRole);
+      const hasRequestsPage = canAccessScreen(profile, 'requests');
       resetModules();
       if (screen === 'requests') {
+        if (leadership || !hasRequestsPage) {
+          openApprovalBell(dest.requestId, tab);
+          return;
+        }
+        setShowNotifs(false);
         setOpenNotifRequestId(dest.requestId || null);
         setRequestView(tab === 'all' ? 'all' : tab === 'pending' ? 'pending' : 'my');
         setShowRequests(true);
         return;
       }
+      setShowNotifs(false);
       if (screen === 'tasks' || screen === 'dashboard') {
         setActiveTab(screen === 'dashboard' ? 'dashboard' : 'tasks');
         if (dest.taskId) {
@@ -1046,6 +1066,13 @@ function DashboardInner({dark,setDark}) {
       pendingApproval: n?.pendingApproval,
       tab: n?.pendingApproval ? 'pending' : n?.tab,
     });
+    if (isBroadcastNotifRole(userProfile?.appRole) || !canAccessScreen(userProfile, 'requests')) {
+      closeModuleScreens();
+      setNotifCenterTab(dest.tab === 'my' ? 'all' : 'approvals');
+      setOpenNotifRequestId(dest.requestId || n?.requestId || null);
+      setShowNotifs(true);
+      return;
+    }
     closeModuleScreens();
     setShowNotifs(false);
     setOpenNotifRequestId(dest.requestId || n?.requestId || null);
@@ -1064,7 +1091,7 @@ function DashboardInner({dark,setDark}) {
   if(showRequests)     return (
     <>
       <RequestsDashboard userProfile={userProfile} dark={dark} initialView={requestView} initialRequestId={openNotifRequestId} onBack={()=>{setShowRequests(false);setOpenNotifRequestId(null);}}/>
-      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif} isolateLegacy={!isBroadcastNotifRole(userProfile?.appRole)}
+      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);setNotifCenterTab('all');}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} initialTab={notifCenterTab} onOpenRequest={(isBroadcastNotifRole(userProfile?.appRole) || !canScreen('requests')) ? undefined : openRequestFromNotif} isolateLegacy={!isBroadcastNotifRole(userProfile?.appRole)}
         onOpenTask={(taskId)=>{
           setShowNotifs(false);
           setShowRequests(false);
@@ -1443,7 +1470,7 @@ function DashboardInner({dark,setDark}) {
         </div>
       )}
 
-      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif} isolateLegacy={!isBroadcastNotifRole(userProfile?.appRole)}
+      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);setNotifCenterTab('all');}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} initialTab={notifCenterTab} onOpenRequest={(isBroadcastNotifRole(userProfile?.appRole) || !canScreen('requests')) ? undefined : openRequestFromNotif} isolateLegacy={!isBroadcastNotifRole(userProfile?.appRole)}
         onOpenTask={(taskId)=>{
           setActiveTab('tasks');
           setSearch('');

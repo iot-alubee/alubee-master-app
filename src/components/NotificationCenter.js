@@ -901,8 +901,8 @@ function PendingVisitors({ unit, dark, bdr, txt, sub }) {
 }
 
 // ── Main NotificationCenter ────────────────────────────────────────────────────
-export default function NotificationCenter({ unit, dark, onClose, notifs = [], userEmail, userMobile, userAppRole, isolateLegacy = false, initialRequestId, userProfile, onOpenRequest, onOpenTask }) {
-  const [tab, setTab] = useState('all');
+export default function NotificationCenter({ unit, dark, onClose, notifs = [], userEmail, userMobile, userAppRole, isolateLegacy = false, initialRequestId, initialTab, userProfile, onOpenRequest, onOpenTask }) {
+  const [tab, setTab] = useState(initialTab || 'all');
   const [purging, setPurging] = useState(false);
   const [detail, setDetail] = useState(null); // { notif, req, loading }
   const [pendingReqCount, setPendingReqCount] = useState(0);
@@ -912,6 +912,10 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
   const bdr = 'var(--border-subtle)';
   const txt = 'var(--text-primary)';
   const sub = 'var(--text-secondary)';
+
+  useEffect(() => {
+    if (initialTab) setTab(initialTab);
+  }, [initialTab]);
 
   async function openDetail({ notif, req } = {}) {
     if (req && onOpenRequest) {

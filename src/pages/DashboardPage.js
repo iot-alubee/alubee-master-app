@@ -1,6 +1,6 @@
 
 // ── Soft update check (do NOT reload on every Excel/tab focus) ─────────────────
-const APP_VERSION = '115';
+const APP_VERSION = '116';
 let _versionCheckBusy = false;
 async function checkVersion() {
   if (_versionCheckBusy) return;
@@ -58,7 +58,7 @@ import ITDashboard from './ITDashboard';
 import { canAccessScreen, getRoleLabel, roleHasFullAccess } from '../data/appRoles';
 import { canAccessSettings, subscribeNotifPrefs, filterNotifsForUser } from '../utils/settingsService';
 import { isAndroidApp } from '../utils/phoneNumbers';
-import { consumePendingNotifTap } from '../utils/mobileApp';
+import { consumePendingNotifTap, resolveNotifDestination } from '../utils/mobileApp';
 import {
   checkBiometricAvailability,
   biometryLabel,
@@ -811,47 +811,71 @@ function DashboardInner({dark,setDark}) {
   const [pendingSecurityTab, setPendingSecurityTab] = useState(null);
 
   useEffect(()=>{
-    function openFromNotif(detail) {
-      const screen = detail?.screen || 'dashboard';
-      const tab = detail?.tab || null;
+    function resetModules() {
       setShowSecurity(false); setShowExecSummary(false);
       setShowERP(false); setShowStores(false); setShowManpower(false);
-      setShowAgeing(false); setShowAdmin(false); setShowSettings(false); setShowNotifs(false); setShowIT(false); setShowHR(false);
-      if (screen === 'requests' || detail?.type === 'request') {
-        if (detail?.requestId) {
-          setOpenNotifRequestId(detail.requestId);
-          setShowNotifs(true);
-          return;
-        }
-        setRequestView(tab === 'pending' ? 'pending' : 'my');
+      setShowAgeing(false); setShowAdmin(false); setShowSettings(false);
+      setShowNotifs(false); setShowIT(false); setShowHR(false);
+      setShowRequests(false); setShowMaintenance(false);
+      setShowRevenue(false); setShowSupplier(false); setShowCustomer(false);
+      setShowLogistics(false); setShowChildParts(false); setShowU2Migrate(false);
+    }
+    function openFromNotif(raw) {
+      const dest = resolveNotifDestination(raw || {});
+      const screen = dest.screen || 'dashboard';
+      const tab = dest.tab || null;
+      resetModules();
+      if (screen === 'requests') {
+        setOpenNotifRequestId(dest.requestId || null);
+        setRequestView(tab === 'all' ? 'all' : tab === 'pending' ? 'pending' : 'my');
         setShowRequests(true);
         return;
       }
-      setShowRequests(false);
       if (screen === 'tasks' || screen === 'dashboard') {
         setActiveTab(screen === 'dashboard' ? 'dashboard' : 'tasks');
-        if (detail?.taskId) {
+        if (dest.taskId) {
           setTimeout(()=>{
-            const el = document.getElementById('task-'+detail.taskId);
+            const el = document.getElementById('task-'+dest.taskId);
             if (el) { el.scrollIntoView({behavior:'smooth'}); el.style.outline='3px solid #f97316'; setTimeout(()=>el.style.outline='',3000); }
           }, 600);
         }
-      } else if (screen === 'security') {
+        return;
+      }
+      if (screen === 'security') {
         if (tab) setPendingSecurityTab(tab);
         setTimeout(()=>setShowSecurity(true), 50);
-      } else if (screen === 'erp') {
-        setTimeout(()=>setShowERP(true), 50);
-      } else if (screen === 'stores') {
-        setTimeout(()=>setShowStores(true), 50);
-      } else if (screen === 'executive') {
-        setTimeout(()=>setShowExecSummary(true), 50);
+        return;
       }
+      if (screen === 'erp') { setTimeout(()=>setShowERP(true), 50); return; }
+      if (screen === 'stores') { setTimeout(()=>setShowStores(true), 50); return; }
+      if (screen === 'executive') { setTimeout(()=>setShowExecSummary(true), 50); return; }
+      if (screen === 'maintenance') { setTimeout(()=>setShowMaintenance(true), 50); return; }
+      if (screen === 'revenue') { setTimeout(()=>setShowRevenue(true), 50); return; }
+      if (screen === 'supplier') { setTimeout(()=>setShowSupplier(true), 50); return; }
+      if (screen === 'hr') { setTimeout(()=>setShowHR(true), 50); return; }
+      if (screen === 'it') { setTimeout(()=>setShowIT(true), 50); return; }
+      if (screen === 'customers') { setTimeout(()=>setShowCustomer(true), 50); return; }
+      setActiveTab('dashboard');
     }
     function handleNotifTap(e) {
       openFromNotif(e.detail || {});
     }
     const pending = consumePendingNotifTap();
     if (pending) openFromNotif(pending);
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('screen') || params.get('requestId') || params.get('taskId')) {
+        openFromNotif({
+          screen: params.get('screen'),
+          tab: params.get('tab'),
+          requestId: params.get('requestId'),
+          taskId: params.get('taskId'),
+          type: params.get('type'),
+          pendingApproval: params.get('pendingApproval'),
+        });
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (_) {}
     window.addEventListener('alubee_notification_tap', handleNotifTap);
     return () => window.removeEventListener('alubee_notification_tap', handleNotifTap);
   }, []);
@@ -1013,6 +1037,21 @@ function DashboardInner({dark,setDark}) {
     setShowAdmin(true);
     setSidebarOpen(false);
   };
+  const openRequestFromNotif = (n) => {
+    const dest = resolveNotifDestination({
+      ...n,
+      screen: 'requests',
+      type: n?.type || 'request',
+      requestId: n?.requestId || n?.id,
+      pendingApproval: n?.pendingApproval,
+      tab: n?.pendingApproval ? 'pending' : n?.tab,
+    });
+    closeModuleScreens();
+    setShowNotifs(false);
+    setOpenNotifRequestId(dest.requestId || n?.requestId || null);
+    setRequestView(dest.tab === 'pending' ? 'pending' : dest.tab === 'all' ? 'all' : 'my');
+    setShowRequests(true);
+  };
 
   // Show ageing screen full page
   if(showAgeing)  return <AgeingScreen  dark={dark} onBack={()=>setShowAgeing(false)} unit={unit}/> ;
@@ -1024,8 +1063,8 @@ function DashboardInner({dark,setDark}) {
   if(showSupplier)     return <SupplierDashboard userRole={userProfile?.role} userDept={userProfile?.dept} userProfile={userProfile} unit={unit} onBack={()=>setShowSupplier(false)}/>;
   if(showRequests)     return (
     <>
-      <RequestsDashboard userProfile={userProfile} dark={dark} initialView={requestView} onBack={()=>setShowRequests(false)}/>
-      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId}
+      <RequestsDashboard userProfile={userProfile} dark={dark} initialView={requestView} initialRequestId={openNotifRequestId} onBack={()=>{setShowRequests(false);setOpenNotifRequestId(null);}}/>
+      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif}
         onOpenTask={(taskId)=>{
           setShowNotifs(false);
           setShowRequests(false);
@@ -1404,7 +1443,7 @@ function DashboardInner({dark,setDark}) {
         </div>
       )}
 
-      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId}
+      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif}
         onOpenTask={(taskId)=>{
           setActiveTab('tasks');
           setSearch('');

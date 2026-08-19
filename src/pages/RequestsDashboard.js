@@ -511,8 +511,8 @@ function FlowTracker({ flow, approvals, rejected }) {
 }
 
 // ─── REQUEST CARD ─────────────────────────────────────────────────────────────
-function RequestCard({ req, userEmail, userMobile, userAppRole, isAdmin, onAction, dark, userProfile }) {
-  const [expanded, setExpanded] = useState(false);
+function RequestCard({ req, userEmail, userMobile, userAppRole, isAdmin, onAction, dark, userProfile, startExpanded }) {
+  const [expanded, setExpanded] = useState(!!startExpanded);
   const [editDays, setEditDays] = useState(false);
   const [newDays, setNewDays] = useState(String(req.leaveDays ?? req.days ?? ''));
   const [acting, setActing] = useState(false);
@@ -542,6 +542,10 @@ function RequestCard({ req, userEmail, userMobile, userAppRole, isAdmin, onActio
     (overallStatus === 'Resolved' && isITRequester(req, userMobile))
   );
   const isJMD = ['jmd', 'jmd_1', 'jmd_2'].includes(userAppRole);
+
+  useEffect(() => {
+    if (startExpanded) setExpanded(true);
+  }, [startExpanded]);
 
   const requestedDays = Number(req.leaveDaysRequested ?? req.originalLeaveDays ?? req.leaveDays ?? 0) || 0;
   const currentLeaveDays = Number(req.leaveDays ?? requestedDays) || 0;
@@ -662,7 +666,7 @@ function RequestCard({ req, userEmail, userMobile, userAppRole, isAdmin, onActio
   }
 
   return (
-    <div style={{background:'var(--bg-raised)',borderRadius:12,border:`1.5px solid ${isMyTurn?'#fde68a':ss.border}`,marginBottom:12,overflow:'hidden',boxShadow:isMyTurn?'0 0 0 2px #fde68a33':'0 1px 4px rgba(0,0,0,0.08)'}}>
+    <div id={`request-${req.id}`} style={{background:'var(--bg-raised)',borderRadius:12,border:`1.5px solid ${isMyTurn?'#fde68a':ss.border}`,marginBottom:12,overflow:'hidden',boxShadow:isMyTurn?'0 0 0 2px #fde68a33':'0 1px 4px rgba(0,0,0,0.08)'}}>
       {/* Header */}
       <div onClick={()=>setExpanded(e=>!e)} style={{padding:'12px 16px',cursor:'pointer',display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:8}}>
         <div style={{flex:1,minWidth:0}}>
@@ -1543,7 +1547,7 @@ function MyRequestAlerts({ userMobile, userAppRole }) {
   );
 }
 
-export default function RequestsDashboard({ userProfile, onBack, dark, initialView }) {
+export default function RequestsDashboard({ userProfile, onBack, dark, initialView, initialRequestId }) {
   const userEmail = getProfileEmail(userProfile);
   const userMobile = getProfileMobile(userProfile);
   const appRole = userProfile?.appRole;
@@ -1563,14 +1567,18 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
   const [requests,     setRequests]     = useState([]);
   const [pendingAll,   setPendingAll]   = useState([]);
   const [loading,      setLoading]      = useState(true);
-  const [view,         setView]         = useState(initialView || 'my');
+  const [view,         setView]         = useState(
+    initialView === 'approvals' || initialView === 'approval' || initialView === 'pending' ? 'pending' : (initialView || 'my')
+  );
   const [newType,      setNewType]      = useState(initialView === 'new' ? 'od' : null);
   const [filter,       setFilter]       = useState('all');
 
   useEffect(() => {
     if (!initialView) return;
-    setView(initialView);
-    if (initialView === 'new') setNewType((t) => t || 'od');
+    const mapped =
+      initialView === 'approvals' || initialView === 'approval' ? 'pending' : initialView;
+    setView(mapped);
+    if (mapped === 'new') setNewType((t) => t || 'od');
   }, [initialView]);
 
   // Pending for this mobile / role
@@ -1627,7 +1635,7 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
 
   const tabs = [
     { id:'my',      label:'My Requests', icon:'📋' },
-    ...(isApprover ? [{ id:'pending', label:`Pending${myPending.length>0?' ('+myPending.length+')':''}`, icon:'⏳' }] : []),
+    ...(isApprover ? [{ id:'pending', label:`Approvals${myPending.length>0?' ('+myPending.length+')':''}`, icon:'⏳' }] : []),
     ...(isAdmin    ? [{ id:'all',     label:'All',    icon:'👁‍🗨' }] : []),
     { id:'new',     label:'+ New',   icon:'✏️' },
   ];
@@ -1640,6 +1648,15 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
   ];
 
   const filterTypes = ['all','od','visitor','leave','it'];
+
+  useEffect(() => {
+    if (!initialRequestId) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById('request-' + initialRequestId);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 450);
+    return () => clearTimeout(t);
+  }, [initialRequestId, displayed.length, view]);
 
   return (
     <div style={{minHeight:'100vh',background:'var(--bg-base)',fontFamily:'Inter,system-ui,sans-serif'}}>
@@ -1722,7 +1739,7 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
             {!loading && displayed.length === 0 && (
               <div style={{textAlign:'center',padding:48,color:'var(--text-secondary)'}}>
                 <div style={{fontSize:36,marginBottom:8}}>📋</div>
-                <div style={{fontSize:13}}>{view==='pending'?'No requests pending your action':'No requests yet'}</div>
+                <div style={{fontSize:13}}>{view==='pending'?'No requests waiting for your approval':'No requests yet'}</div>
                 {view==='my' && (
                   <button onClick={()=>setView('new')} style={{marginTop:14,padding:'10px 24px',borderRadius:8,border:'none',background:'#7c3aed',color:'#fff',fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>
                     + New Request
@@ -1732,7 +1749,7 @@ export default function RequestsDashboard({ userProfile, onBack, dark, initialVi
             )}
 
             {displayed.map(req=>(
-              <RequestCard key={req.id} req={req} userEmail={userEmail} userMobile={userMobile} userAppRole={appRole} isAdmin={isAdmin} onAction={handleAction} dark={dark} userProfile={userProfile}/>
+              <RequestCard key={req.id} req={req} userEmail={userEmail} userMobile={userMobile} userAppRole={appRole} isAdmin={isAdmin} onAction={handleAction} dark={dark} userProfile={userProfile} startExpanded={!!initialRequestId && req.id === initialRequestId}/>
             ))}
           </>
         )}

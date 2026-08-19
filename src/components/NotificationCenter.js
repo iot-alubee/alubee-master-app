@@ -901,7 +901,7 @@ function PendingVisitors({ unit, dark, bdr, txt, sub }) {
 }
 
 // ── Main NotificationCenter ────────────────────────────────────────────────────
-export default function NotificationCenter({ unit, dark, onClose, notifs = [], userEmail, userMobile, userAppRole, isolateLegacy = false, initialRequestId, userProfile }) {
+export default function NotificationCenter({ unit, dark, onClose, notifs = [], userEmail, userMobile, userAppRole, isolateLegacy = false, initialRequestId, userProfile, onOpenRequest, onOpenTask }) {
   const [tab, setTab] = useState('all');
   const [purging, setPurging] = useState(false);
   const [detail, setDetail] = useState(null); // { notif, req, loading }
@@ -912,6 +912,20 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
   const sub = 'var(--text-secondary)';
 
   async function openDetail({ notif, req } = {}) {
+    if (req && onOpenRequest) {
+      onOpenRequest({ requestId: req.id, pendingApproval: true, type: req.type || 'request' });
+      return;
+    }
+    if (notif && isRequestNotif(notif) && onOpenRequest) {
+      markNotifRead(notif, unit).catch(() => {});
+      onOpenRequest(notif);
+      return;
+    }
+    if (notif?.taskId && onOpenTask) {
+      markNotifRead(notif, unit).catch(() => {});
+      onOpenTask(notif.taskId);
+      return;
+    }
     const requestId = req?.id || notif?.requestId;
     if (notif) markNotifRead(notif, unit).catch(() => {});
     if (req) {

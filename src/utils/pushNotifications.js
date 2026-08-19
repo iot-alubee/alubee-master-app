@@ -4,7 +4,7 @@
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import app, { db, getWebPushVapidKey } from '../firebase';
 import { normalizeAppMobile, getProfileMobile } from './requestService';
-import { flattenNotifData, storePendingNotifTap } from './mobileApp';
+import { storePendingNotifTap, resolveNotifDestination } from './mobileApp';
 
 const FCM_COL = 'fcm_tokens';
 const FCM_BACKUP_DOC = 'alubee_app_fcm_tokens';
@@ -40,19 +40,7 @@ function isStandaloneDisplay() {
 }
 
 function intentFromData(raw) {
-  const data = flattenNotifData(raw || {});
-  const type = data.type || '';
-  const screen =
-    data.screen ||
-    (type === 'request' || type === 'od' ? 'requests' : type === 'task' || type === 'task_assigned' ? 'tasks' : 'dashboard');
-  return {
-    tapped: true,
-    screen,
-    tab: data.tab || null,
-    taskId: data.taskId || null,
-    requestId: data.requestId || null,
-    type: type || null,
-  };
+  return { tapped: true, ...resolveNotifDestination(raw) };
 }
 
 function dispatchNotifTap(intent) {

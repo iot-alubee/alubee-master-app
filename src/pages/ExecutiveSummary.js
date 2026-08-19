@@ -58,7 +58,25 @@ export default function ExecutiveSummary({ dark, onBack, unit }) {
     subs.push(latest(`stores_alloy_supplier${sfx}`, setAlloySupplierData));
     // Alloy schedule — not unit-specific
     const qSched = query(collection(db,'alloy_schedule'), orderBy('createdAt','desc'), limit(50));
-    subs.push(onSnapshot(qSched, s=>setAlloySchedules(s.docs.map(d=>({id:d.id,...d.data()})))));
+    subs.push(onSnapshot(qSched, s=>{
+      const now = new Date();
+      const thisYear = now.getFullYear();
+      const thisMonth = now.getMonth();
+      const allSched = s.docs.map(d=>({id:d.id,...d.data()}));
+      const filtered = allSched.filter(sc=>{
+        const tt = parseFloat(sc.totalTons)||parseFloat(sc.totalPO)||0;
+        const delivered = (sc.deliveries||[]).reduce((a,d)=>a+(parseFloat(d.tons)||0),0);
+        const pct = tt>0?Math.round((delivered/tt)*100):0;
+        if (pct < 100) return true;
+        const hasThisMonthDelivery = (sc.deliveries||[]).some(d=>{
+          if (!d.date) return false;
+          const dt = new Date(d.date);
+          return dt.getFullYear()===thisYear && dt.getMonth()===thisMonth;
+        });
+        return hasThisMonthDelivery;
+      });
+      setAlloySchedules(filtered);
+    }));
     const qTrans = query(collection(db,'alloy_intra_transfer'), orderBy('createdAt','desc'), limit(50));
     subs.push(onSnapshot(qTrans, s=>setIntraTransfers(s.docs.map(d=>({id:d.id,...d.data()})))));
     return () => subs.forEach(u=>u());
@@ -1048,7 +1066,26 @@ function AlloyScheduleSummary({ schedules, dark, card, txt, sub, bdr }) {
   const totalTons = schedules.reduce((a,s)=>a+(parseFloat(s.totalTons)||0),0);
   const totalDelivered = schedules.reduce((a,s)=>a+(s.deliveries||[]).reduce((b,d)=>b+(parseFloat(d.tons)||0),0),0);
 
-  // All deliveries flat — sorted by date
+  const lastUpdatedSchedule = [...schedules].sort((a,b)=>{
+    const aT = a.createdAt?.toDate?.()?.getTime?.()??a.createdAt?.seconds*1000??0;
+    const bT = b.createdAt?.toDate?.()?.getTime?.()??b.createdAt?.seconds*1000??0;
+    return bT - aT;
+  })[0];
+  const lastUpdAt = lastUpdatedSchedule?.createdAt;
+  const lastUpdBy = lastUpdatedSchedule?.submittedBy||'—';
+  function fmtUpd(at) {
+    if (!at) return null;
+    let ts = null;
+    try {
+      if (at.toDate) ts = at.toDate();
+      else if (at.seconds) ts = new Date(at.seconds*1000);
+      else ts = new Date(at);
+    } catch(e) {}
+    if (!ts||isNaN(ts)) return null;
+    return ts.toLocaleDateString('en-IN',{year:'numeric',month:'2-digit',day:'2-digit'}).split('/').reverse().join('-')
+      +' at '+ts.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+  }
+
   const allDeliveries = [];
   schedules.forEach(s=>{
     (s.deliveries||[]).forEach(d=>{
@@ -1061,8 +1098,12 @@ function AlloyScheduleSummary({ schedules, dark, card, txt, sub, bdr }) {
   const u1Total  = allDeliveries.filter(d=>d.unit==='u1').reduce((a,d)=>a+(parseFloat(d.tons)||0),0);
   const u2Total  = allDeliveries.filter(d=>d.unit==='u2').reduce((a,d)=>a+(parseFloat(d.tons)||0),0);
 
+  const updStr = fmtUpd(lastUpdAt);
   return (
     <div>
+      {updStr&&<div style={{fontSize:11,color:sub,marginBottom:10}}>
+        Last updated: <span style={{color:'#f97316',fontWeight:700}}>{updStr}</span> by <strong style={{color:txt}}>{lastUpdBy}</strong>
+      </div>}
       {/* KPI cards */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,marginBottom:16}}>
         {[
@@ -1083,7 +1124,7 @@ function AlloyScheduleSummary({ schedules, dark, card, txt, sub, bdr }) {
       {/* Filter toggle */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
         <div style={{fontSize:11,color:sub}}>
-          {showCompleted?`All ${schedules.length} POs`:`${schedules.filter(s=>(s.deliveries||[]).reduce((a,d)=>a+(parseFloat(d.tons)||0),0)<(parseFloat(s.totalTons)||1)).length} active POs`}
+          {showCompleted?`All ${schedules.length} POs`:`${schedules.filter(s=>{const tt=parseFloat(s.totalTons)||parseFloat(s.totalPO)||0;const d=(s.deliveries||[]).reduce((a,x)=>a+(parseFloat(x.tons)||0),0);const p=tt>0?Math.round((d/tt)*100):0;return p<100;}).length} active POs`}
         </div>
         <button onClick={()=>setShowCompleted(v=>!v)}
           style={{padding:'4px 12px',borderRadius:7,border:`1px solid ${bdr}`,background:'transparent',
@@ -1092,9 +1133,10 @@ function AlloyScheduleSummary({ schedules, dark, card, txt, sub, bdr }) {
         </button>
       </div>
       {schedules.map((s,si)=>{
-        const delivered = (s.deliveries||[]).reduce((a,d)=>a+(parseFloat(d.tons)||0),0);
-        const pending   = Math.max(0,(s.totalTons||0)-delivered);
-        const pct       = s.totalTons>0?Math.round((delivered/s.totalTons)*100):0;
+        const delivered  = (s.deliveries||[]).reduce((a,d)=>a+(parseFloat(d.tons)||0),0);
+        const totalTonsEff = parseFloat(s.totalTons)||parseFloat(s.totalPO)||0;
+        const pending    = Math.max(0,totalTonsEff-delivered);
+        const pct        = totalTonsEff>0?Math.round((delivered/totalTonsEff)*100):0;
         if (!showCompleted && pct>=100) return null;
         const sortedDel = [...(s.deliveries||[])].sort((a,b)=>a.date.localeCompare(b.date));
 
@@ -1109,7 +1151,7 @@ function AlloyScheduleSummary({ schedules, dark, card, txt, sub, bdr }) {
                 </div>
               </div>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                <span style={{background:'#eff6ff',color:'#1e40af',borderRadius:8,padding:'3px 10px',fontWeight:800,fontSize:12}}>{s.totalTons}T PO</span>
+                <span style={{background:'#eff6ff',color:'#1e40af',borderRadius:8,padding:'3px 10px',fontWeight:800,fontSize:12}}>{totalTonsEff}T PO</span>
                 <span style={{background:pct>=100?'#f0fdf4':'#fff7ed',color:pct>=100?'#15803d':'#b45309',borderRadius:8,padding:'3px 10px',fontWeight:800,fontSize:12}}>
                   {pct>=100?'✅ Complete':`${pct}% done`}
                 </span>

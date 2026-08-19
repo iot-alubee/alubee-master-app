@@ -23,6 +23,7 @@ function LastUpdatedBadge({at, by}) {
 
 import { doc, setDoc, getDocs, deleteDoc, query, where, collection } from 'firebase/firestore';
 import { createNotification, NOTIF_TYPES } from '../utils/notificationService';
+import ScheduleRevisionComp from './ScheduleRevision';
 import { db } from '../firebase';
 
 // ─── WORKING DAYS ─────────────────────────────────────────────────────────────
@@ -260,13 +261,14 @@ const BINS_DATA = [
 ];
 
 const BINS_CHARTS = [
-  {label:"HS ( 399 )",name:"Heat Sink Bins (HS-399)",custId:"seg_heatsink",normPerDay:30.0,avgPerDay:16.0,daily:{}},
-  {label:"IMB (375)",name:"IMB Bins (375)",custId:"seg_gururaj",normPerDay:53.0,avgPerDay:44.0,daily:{}},
-  {label:"DEF (394)",name:"DEF Bins (394)",custId:"seg_gururaj",normPerDay:18.0,avgPerDay:23.0,daily:{}},
-  {label:"CES (408)",name:"CES Bins (408)",custId:"seg_gururaj",normPerDay:97.0,avgPerDay:85.0,daily:{}},
-  {label:"DEF&SREC(400)",name:"DEF & SREC Bins (400)",custId:"nbl",normPerDay:241.0,avgPerDay:184.0,daily:{}},
-  {label:"ASSY (406)",name:"ASSY Bins (406)",custId:"seg_prathwin",normPerDay:25.0,avgPerDay:27.0,daily:{}},
-  {label:"CES 601",name:"CES 601 Bins",custId:"seg_hassan",normPerDay:107.0,avgPerDay:75.0,daily:{}},
+  {label:"HS ( 399 )",name:"Heat Sink — HS 399 Bins",custId:"seg_heatsink",normPerDay:30.0,daily:{}},
+  {label:"IMB (375)",name:"IMB Bins (375)",custId:"seg_gururaj",normPerDay:53.0,daily:{}},
+  {label:"DEF (394)",name:"DEF Bins (394)",custId:"seg_gururaj",normPerDay:18.0,daily:{}},
+  {label:"CES (408)",name:"CES Bins (408)",custId:"seg_gururaj",normPerDay:97.0,daily:{}},
+  {label:"DEF&SREC(400)",name:"DEF & SREC Bins (400)",custId:"nbl",normPerDay:241.0,daily:{}},
+  {label:"ASSY (406)",name:"ASSY Bins (406)",custId:"seg_prathwin",normPerDay:25.0,daily:{}},
+  {label:"CES 601",name:"CES 601 Bins",custId:"seg_hassan",normPerDay:107.0,daily:{}},
+  {label:"IMB 112 Hassan",name:"IMB 112 Bins — Hassan",custId:"seg_hassan",normPerDay:50.0,daily:{}},
 ];
 
 // ─── FIRESTORE HELPERS ────────────────────────────────────────────────────────
@@ -819,7 +821,7 @@ function ScheduleMasterEditor({customers,schedules,year,month,onSave,onClose}){
 
 // ─── INSIGHTS PANEL ───────────────────────────────────────────────────────────
 // ─── CUSTOMER DETAIL ──────────────────────────────────────────────────────────
-function CustomerDetail({customer,schedules,dailyData,normsPercent,onBack,isPPC,onEntry,onSchedule,userProfile,schedLastUpd,dailyLastUpd}){
+function CustomerDetail({customer,schedules,dailyData,normsPercent,onBack,isPPC,onEntry,onSchedule,userProfile,schedLastUpd,dailyLastUpd,activeUnit}){
   const sch = schedules[customer.id]||{};
   const dd  = dailyData[customer.id]||{};
   const normsPct = normsPercent*100;
@@ -870,7 +872,7 @@ function CustomerDetail({customer,schedules,dailyData,normsPercent,onBack,isPPC,
           </div>}
         </div>
         <div style={{display:'flex',gap:0,marginTop:10,borderBottom:`1px solid ${C.border}`}}>
-          {[['overview','📊 Overview'],['bins','🗂 Bins']].map(([t,l])=>(
+          {[['overview','📊 Overview'],['bins','🗂 Bins'],['history','📈 6M History']].map(([t,l])=>(
             <button key={t} onClick={()=>setActiveTab(t)} style={{padding:'6px 18px',border:'none',borderBottom:`2px solid ${activeTab===t?C.teal:'transparent'}`,background:'transparent',color:activeTab===t?C.teal:C.sub,fontWeight:activeTab===t?700:400,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>{l}{t==='bins'&&custBins.length>0?` (${custBins.length})`:''}</button>
           ))}
         </div>
@@ -984,6 +986,10 @@ function CustomerDetail({customer,schedules,dailyData,normsPercent,onBack,isPPC,
         {activeTab==='bins'&&(
           <BinsTab custId={customer.id} custName={customer.name} custBins={custBins} userProfile={userProfile} activeUnit={activeUnit}/>
         )}
+        {activeTab==='history'&&(
+          <HistoryTab customer={customer} activeUnit={activeUnit}/>
+        )}
+
       </div>
     </div>
   );
@@ -993,8 +999,9 @@ function CustomerDetail({customer,schedules,dailyData,normsPercent,onBack,isPPC,
 function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,workingDays,onClose}){
   const WORKING_DAYS = workingDays || getWorkingDaysInMonth(year,month);
   const today = new Date().getDate();
-  const daysElapsed = Math.max(today-1,1);
-  const daysLeft = Math.max(WORKING_DAYS - today, 1);
+  const daysElapsed = Math.max(getWorkingDaysElapsed(year,month,today-1),1);
+  const daysLeft = Math.max(WORKING_DAYS - getWorkingDaysElapsed(year,month,today), 1);
+  const daysElapsedWD = Math.max(getWorkingDaysElapsed(year,month,today-1), 1); // completed days
   const normsPct = normsPercent*100;
   const [view,setView] = useState('morning'); // 'morning' | 'monthly' | 'mom'
   const [momData, setMomData]   = useState(null);  // {prevSchedules, prevDaily, prevYear, prevMonth}
@@ -1024,9 +1031,13 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
       const schQ = s.scheduleQty||0;
       const disp = Object.values(pd).reduce((a,v)=>a+(v||0),0);
       // Last dispatch day
-      const dispDays = Object.keys(pd).map(Number).filter(d=>pd[d]>0);
-      const lastDay  = dispDays.length?Math.max(...dispDays):0;
-      const daysSinceLast = lastDay?today-lastDay:999;
+      // Keys may be strings or numbers from Firestore — normalize to numbers
+      const dispDays = Object.keys(pd).map(Number).filter(d=>!isNaN(d)&&(pd[d]>0||pd[String(d)]>0));
+      const lastDay  = dispDays.length ? Math.max(...dispDays) : 0;
+      // Working days since last dispatch (not calendar days)
+      const daysSinceLast = lastDay
+        ? Math.max(0, getWorkingDaysElapsed(year, month, today) - getWorkingDaysElapsed(year, month, lastDay))
+        : 999;
       return {...p,schQ,disp,bal:Math.max(0,schQ-disp),rate:p.rate,
         orderVal:schQ*p.rate,ach:disp*p.rate,
         dispPct:schQ>0?disp/schQ*100:0,lastDay,daysSinceLast};
@@ -1039,9 +1050,9 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
     const arpu    = totSch>0?totVal/totSch:0;
     const reqRate = daysLeft>0?Math.max(0,totSch-totDisp)/daysLeft:0;
     const currRate= totDisp/daysElapsed;
-    const projDisp= currRate*WORKING_DAYS;
-    const projVal = projDisp*arpu;
-    const valAtRisk = Math.max(0,totVal-totAch-(projDisp-totDisp)*arpu);
+    const projDisp = totAch/Math.max(arpu,1) + currRate*daysLeft; // achieved qty + projected additional
+    const projVal  = totAch + currRate*daysLeft*arpu;              // achieved value + projected additional value
+    const valAtRisk= Math.max(0, totVal - projVal);
     const status = dispPct>=normsPct?'ok':dispPct>=normsPct*0.6?'risk':'crit';
     const stalled = parts.filter(p=>p.schQ>0&&p.daysSinceLast>=3&&p.disp<p.schQ);
     return {id:c.id,name:c.name,parts,totSch,totDisp,totVal,totAch,dispPct,arpu,
@@ -1056,9 +1067,16 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
   const grandARPU    = grand.sch>0?grand.val/grand.sch:0;
   const avgDay       = grand.disp/daysElapsed;
   const reqDay       = Math.max(0,grand.sch-grand.disp)/daysLeft;
-  const projGrandVal = avgDay*WORKING_DAYS*(grand.val/grand.sch);
-  const valAtRisk    = Math.max(0,grand.val-grand.ach-(projGrandVal-grand.ach));
-  const backlogVal   = Math.max(0,grand.val*(normsPct/100)-grand.ach);
+  const grandARPU_val = grand.sch>0 ? grand.val/grand.sch : 0;
+  // Projection: what we've achieved + what we'll achieve at current rate for remaining days
+  const projAddl     = avgDay * daysLeft * grandARPU_val;
+  const projGrandVal = grand.ach + projAddl;
+  const valAtRisk    = Math.max(0, grand.val - projGrandVal);
+  const backlogVal   = Math.max(0, grand.val*(normsPct/100) - grand.ach);
+  // Strike rate: revenue per day needed to hit 100% order value
+  const strikeRate   = daysLeft>0 ? Math.max(0, grand.val-grand.ach)/daysLeft : 0;
+  // Avg revenue per day achieved so far
+  const avgRevDay    = daysElapsed>0 ? grand.ach/daysElapsed : 0;
 
   // Daily totals
   const dailyTotals={};
@@ -1114,16 +1132,18 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
         {/* ── KPI STRIP ─────────────────────────────────────────────────── */}
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:10,marginBottom:16}}>
           {[
-            {l:"Overall ARPU",      v:`₹${grandARPU.toFixed(0)}/pc`,  co:"#F5A623", sub:"Order value ÷ schedule qty",
-              alert: grandARPU<50},
-            {l:"Avg Dispatch/Day",  v:fmtK(Math.round(avgDay)),        co:C.teal,   sub:`${daysElapsed} days elapsed`},
-            {l:"Required/Day",      v:fmtK(Math.round(reqDay)),        co:reqDay>avgDay*1.5?C.red:reqDay>avgDay?C.orange:C.green,
+            {l:"Overall ARPU",        v:`₹${grandARPU.toFixed(0)}/pc`,           co:"#F5A623", sub:"Order value ÷ schedule qty"},
+            {l:"Avg Dispatch/Day",    v:fmtK(Math.round(avgDay)),                co:C.teal,    sub:`${daysElapsed} working days elapsed`},
+            {l:"Avg Revenue/Day",     v:fmtL(avgRevDay),                   co:C.green,   sub:`Achieved ÷ ${daysElapsed} days`},
+            {l:"Strike Rate",         v:fmtL(strikeRate)+'/day',              co:strikeRate>avgRevDay*1.5?C.red:C.orange,
+              sub:"Needed to hit 100% value", alert:strikeRate>avgRevDay*2},
+            {l:"Required Qty/Day",    v:fmtK(Math.round(reqDay)),                co:reqDay>avgDay*1.5?C.red:reqDay>avgDay?C.orange:C.green,
               sub:"To clear balance", alert:reqDay>avgDay*2},
-            {l:"Order Value",       v:fmtL(grand.val),                 co:C.text,   sub:"Schedule × rate"},
-            {l:"Value Achieved",    v:fmtL(grand.ach),                 co:C.green,  sub:`${(grand.ach/grand.val*100).toFixed(1)}% of order`},
-            {l:"Value Backlog",     v:fmtL(backlogVal),                co:C.red,    sub:"Behind norms today"},
-            {l:"Value at Risk",     v:fmtL(Math.max(0,grand.val-projGrandVal)), co:"#f87171",sub:"If pace stays same", alert:true},
-            {l:"Days Remaining",    v:`${daysLeft}d`,                  co:daysLeft<=3?C.red:daysLeft<=7?C.orange:C.blue,
+            {l:"Order Value",         v:fmtL(grand.val),                         co:C.text,    sub:"Schedule × rate"},
+            {l:"Value Achieved",      v:fmtL(grand.ach),                         co:C.green,   sub:`${(grand.ach/(grand.val||1)*100).toFixed(1)}% of order`},
+            {l:"Avg Backlog/Day",     v:fmtL(backlogVal/Math.max(daysElapsed,1)), co:C.red, sub:"Behind norms · per day"},
+            {l:"Value at Risk",       v:fmtL(Math.max(0,grand.val-projGrandVal)), co:"#f87171", sub:"If pace stays same", alert:valAtRisk>0},
+            {l:"Days Remaining",      v:`${daysLeft}d`,                           co:daysLeft<=3?C.red:daysLeft<=7?C.orange:C.blue,
               sub:"Working days left", alert:daysLeft<=3},
           ].map(k=>(
             <div key={k.l} style={{background:k.alert?'#1a0808':C.card,border:`1px solid ${k.alert?'#7f1d1d':C.border}`,borderRadius:12,padding:"12px 14px"}}>
@@ -1132,6 +1152,33 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
               <div style={{fontSize:9,color:C.sub,marginTop:1}}>{k.sub}</div>
             </div>
           ))}
+        </div>
+        {/* ── DAILY REVENUE + BACKLOG SUMMARY ─────────────────────────── */}
+        <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:12,padding:'12px 16px',marginBottom:16}}>
+          <div style={{fontWeight:800,fontSize:12,color:C.text,marginBottom:10}}>📅 Daily Sales Summary — {new Date(year,month).toLocaleString('en-IN',{month:'long',year:'numeric'})}</div>
+          <div style={{display:'flex',gap:16,flexWrap:'wrap',fontSize:11,color:C.sub}}>
+            <span>Avg qty/day: <strong style={{color:C.teal}}>{fmtK(Math.round(avgDay))}</strong></span>
+            <span>Avg revenue/day: <strong style={{color:C.green}}>{fmtL(avgRevDay)}</strong></span>
+            <span>Strike rate needed: <strong style={{color:strikeRate>avgRevDay*1.5?C.red:C.orange}}>{fmtL(strikeRate)}/day</strong></span>
+            <span>Avg backlog/day: <strong style={{color:C.red}}>{fmtL(backlogVal/Math.max(daysElapsed,1))}</strong></span>
+            <span>Total backlog qty: <strong style={{color:C.red}}>{fmtK(Math.round(Math.max(0,grand.sch-grand.disp)))}</strong></span>
+          </div>
+          {/* Day-wise revenue table */}
+          <div style={{marginTop:10,overflowX:'auto'}}>
+            <div style={{display:'flex',gap:6,minWidth:'max-content'}}>
+              {Object.keys(dailyTotals).sort((a,b)=>Number(a)-Number(b)).map(d=>{
+                const qty=dailyTotals[d]||0;
+                const rev=qty*grandARPU_val;
+                return (
+                  <div key={d} style={{textAlign:'center',minWidth:42,background:C.raised,borderRadius:6,padding:'6px 4px'}}>
+                    <div style={{fontSize:9,color:C.sub,marginBottom:2}}>{d}</div>
+                    <div style={{fontSize:11,fontWeight:700,color:C.text}}>{fmtK(qty)}</div>
+                    <div style={{fontSize:9,color:C.green}}>₹{fmtL(rev)}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* ── MORNING VIEW ─────────────────────────────────────────────── */}
@@ -1170,7 +1217,7 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
                     {allStalled.slice(0,6).map((p,i)=>(
                       <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:10,padding:"3px 0",borderBottom:`1px solid rgba(255,255,255,0.05)`}}>
                         <span style={{color:"#fca5a5"}}>{p.custName} · {p.partNo}</span>
-                        <span style={{color:C.red,fontWeight:700}}>{p.daysSinceLast}d stalled</span>
+                        <span style={{color:C.red,fontWeight:700}}>{p.daysSinceLast>=999?'No dispatch this month':`${p.daysSinceLast>=999?'Never dispatched':`${p.daysSinceLast}d stalled`}`}</span>
                       </div>
                     ))}
                   </div>
@@ -1210,6 +1257,42 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
 
           {/* CUSTOMER STATUS + RUN RATE */}
           <div style={{background:C.card,borderRadius:12,border:`1px solid ${C.border}`,padding:"14px 16px",marginBottom:16}}>
+            {/* Customer-wise projection table */}
+            <div style={{fontWeight:700,fontSize:13,marginBottom:8}}>📈 Customer-wise Month-end Projection</div>
+            <div style={{border:`1px solid ${C.border}`,borderRadius:10,overflow:'hidden',marginBottom:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',gap:0,padding:'6px 12px',background:C.raised}}>
+                {['Customer','Achieved','Order Value','Projected Month-end','Gap'].map(h=>(
+                  <div key={h} style={{fontSize:9,fontWeight:800,color:C.sub,textTransform:'uppercase'}}>{h}</div>
+                ))}
+              </div>
+              {allStats.map(s=>{
+                const short = s.projVal < s.totVal;
+                return (
+                  <div key={s.id} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',
+                    gap:0,padding:'7px 12px',borderTop:`1px solid ${C.border}`,
+                    background:short?'rgba(239,68,68,0.04)':'transparent',alignItems:'center',fontSize:11}}>
+                    <div style={{fontWeight:700,color:C.text,fontSize:12}}>{s.name}</div>
+                    <div style={{color:C.green,fontWeight:700}}>{fmtL(s.totAch)}</div>
+                    <div style={{color:C.sub}}>{fmtL(s.totVal)}</div>
+                    <div style={{color:short?C.orange:C.green,fontWeight:800}}>{fmtL(s.projVal)}</div>
+                    <div style={{color:short?C.red:C.green,fontWeight:700,fontSize:10}}>
+                      {short?`↓ ${fmtL(s.totVal-s.projVal)} short`:'✅ On track'}
+                    </div>
+                  </div>
+                );
+              })}
+              {/* Grand total row */}
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',
+                gap:0,padding:'8px 12px',borderTop:`2px solid ${C.border}`,background:C.raised,fontSize:11}}>
+                <div style={{fontWeight:900,color:C.text}}>TOTAL</div>
+                <div style={{fontWeight:900,color:C.green}}>{fmtL(grand.ach)}</div>
+                <div style={{fontWeight:900,color:C.sub}}>{fmtL(grand.val)}</div>
+                <div style={{fontWeight:900,color:projGrandVal>=grand.val?C.green:C.orange}}>{fmtL(projGrandVal)}</div>
+                <div style={{fontWeight:900,color:projGrandVal>=grand.val?C.green:C.red,fontSize:10}}>
+                  {projGrandVal>=grand.val?'✅ On track':`↓ ${fmtL(grand.val-projGrandVal)} short`}
+                </div>
+              </div>
+            </div>
             <div style={{fontWeight:700,fontSize:13,marginBottom:12}}>Customer Status — Run Rate vs Required</div>
             <div style={{overflowX:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11,minWidth:600}}>
@@ -1697,108 +1780,97 @@ function InsightsPanel({customers,schedules,dailyData,normsPercent,year,month,wo
 
 // ─── BINS TAB ─────────────────────────────────────────────────────────────────
 function BinsChart({chart, lastUpdatedInfo}){
+  const {AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer} = require('recharts');
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth();
+
   const allDays = Array.from({length:31},(_,i)=>i+1);
-  const maxVal = Math.max(chart.normPerDay*1.3, ...Object.values(chart.daily), 1);
-  const H = 120; // chart height px
-  const W = 100; // % width per day
+  const activePts = allDays
+    .map(d=>({d, v:chart.daily[d]??null}))
+    .filter(p=>p.v!==null)
+    .map(p=>({
+      date: new Date(year,month,p.d).toLocaleDateString('en-IN',{day:'2-digit',month:'short'}),
+      Received: p.v,
+      Norm: chart.normPerDay,
+      day: p.d,
+    }));
 
-  const pts = allDays.map(d=>({
-    d, v:chart.daily[d]||0, hasData:chart.daily[d]!=null
-  }));
-
-  // SVG path for received line
-  const activePts = pts.filter(p=>p.hasData);
-  const xStep = 100/(allDays.length-1);
-  const toY = v => H - (v/maxVal)*H;
-  const toX = d => (d-1)*xStep;
-
-  const recvPath = activePts.map((p,i)=>`${i===0?'M':'L'}${toX(p.d).toFixed(1)},${toY(p.v).toFixed(1)}`).join(' ');
-  const normPath = `M0,${toY(chart.normPerDay).toFixed(1)} L100,${toY(chart.normPerDay).toFixed(1)}`;
-  const avgPath  = `M0,${toY(chart.avgPerDay).toFixed(1)} L100,${toY(chart.avgPerDay).toFixed(1)}`;
-
-  const total = Object.values(chart.daily).reduce((a,v)=>a+v,0);
-  const shortDays = pts.filter(p=>p.hasData&&p.v<chart.normPerDay).length;
-  const status = chart.avgPerDay >= chart.normPerDay ? 'ok' : chart.avgPerDay >= chart.normPerDay*0.7 ? 'warn' : 'crit';
+  const total = activePts.reduce((a,p)=>a+p.Received,0);
+  const avg = activePts.length>0 ? Math.round(total/activePts.length) : 0;
+  const shortDays = activePts.filter(p=>p.Received<chart.normPerDay).length;
+  const status = avg >= chart.normPerDay ? 'ok' : avg >= chart.normPerDay*0.7 ? 'warn' : 'crit';
   const statusColor = status==='ok'?C.green:status==='warn'?C.orange:C.red;
 
+  const CustomTooltip = ({active,payload,label})=>{
+    if(!active||!payload||!payload.length) return null;
+    const rcv = payload.find(p=>p.dataKey==='Received');
+    const nrm = payload.find(p=>p.dataKey==='Norm');
+    const isShort = rcv&&rcv.value<chart.normPerDay;
+    return (
+      <div style={{background:'rgba(15,17,23,0.97)',border:`1px solid ${C.border}`,borderRadius:8,padding:'8px 12px'}}>
+        <div style={{fontSize:11,color:C.sub,marginBottom:4}}>{label}</div>
+        {rcv&&<div style={{fontSize:14,fontWeight:800,color:isShort?C.red:C.green}}>{rcv.value} bins</div>}
+        {nrm&&<div style={{fontSize:10,color:'#3b9ede'}}>Norm: {nrm.value}</div>}
+        {isShort&&rcv&&<div style={{fontSize:10,color:C.red}}>Short by {chart.normPerDay-rcv.value}</div>}
+      </div>
+    );
+  };
+
   return (
-    <div style={{background:'#0a0d16',borderRadius:12,border:`1.5px solid ${status==='crit'?C.red:status==='warn'?C.orange:C.border}`,padding:'14px 16px',marginBottom:12}}>
-      {/* Header */}
+    <div style={{background:C.card,borderRadius:12,border:`1.5px solid ${status==='crit'?C.red:status==='warn'?C.orange:C.border}`,padding:'16px',marginBottom:12}}>
+      {lastUpdatedInfo?.at&&<div style={{fontSize:10,color:C.sub,marginBottom:6}}>
+        🕐 Updated {new Date(lastUpdatedInfo.at*1000).toLocaleDateString('en-IN',{day:'numeric',month:'short'})} by {lastUpdatedInfo.by||'—'}
+      </div>}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12,flexWrap:'wrap',gap:8}}>
         <div>
-          <div style={{fontWeight:800,fontSize:13,color:'#fff'}}>{chart.name}</div>
-          <div style={{display:'flex',gap:12,marginTop:4,fontSize:11,flexWrap:'wrap'}}>
+          <div style={{fontWeight:800,fontSize:14,color:C.text}}>{chart.name}</div>
+          <div style={{display:'flex',gap:12,marginTop:4,fontSize:11,flexWrap:'wrap',color:C.sub}}>
             <span style={{color:'#3b9ede'}}>Norm: <b>{chart.normPerDay}/day</b></span>
-            <span style={{color:statusColor}}>Avg: <b>{chart.avgPerDay}/day</b></span>
-            <span style={{color:C.sub}}>Total: <b>{total}</b></span>
+            <span style={{color:statusColor}}>Avg: <b>{avg}/day</b></span>
+            <span>Total dispatched: <b>{total}</b></span>
           </div>
         </div>
-        <div style={{display:'flex',gap:8}}>
-          {status==='crit'&&<span style={{background:'#7f1d1d',color:'#fca5a5',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:800}}>🔴 CRITICAL — {shortDays} days short</span>}
-          {status==='warn'&&<span style={{background:'#7c2d12',color:'#fed7aa',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:800}}>⚠ AT RISK — {shortDays} days short</span>}
-          {status==='ok'&&<span style={{background:'#14532d',color:'#86efac',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:800}}>✅ ON TRACK</span>}
+        <div>
+          {status==='crit'&&<span style={{background:'rgba(127,29,29,0.5)',color:'#fca5a5',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:800}}>🔴 CRITICAL — {shortDays} days short</span>}
+          {status==='warn'&&<span style={{background:'rgba(124,45,18,0.5)',color:'#fed7aa',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:800}}>⚠ AT RISK — {shortDays} days short</span>}
+          {status==='ok'&&<span style={{background:'rgba(20,83,45,0.5)',color:'#86efac',borderRadius:6,padding:'4px 10px',fontSize:11,fontWeight:800}}>✅ ON TRACK</span>}
         </div>
       </div>
 
-      {/* SVG Chart */}
-      <div style={{position:'relative',height:H+30}}>
-        <svg viewBox={`0 0 100 ${H}`} preserveAspectRatio="none" style={{position:'absolute',top:0,left:0,width:'100%',height:H}}>
-          {/* Grid lines */}
-          {[0,0.25,0.5,0.75,1].map(f=>(
-            <line key={f} x1="0" y1={toY(maxVal*f)} x2="100" y2={toY(maxVal*f)} stroke="#1e2440" strokeWidth="0.3"/>
-          ))}
-          {/* Shortage area fill */}
-          {activePts.map((p,i)=>{
-            if(p.v>=chart.normPerDay||i===activePts.length-1) return null;
-            const nx=activePts[i+1];
-            if(!nx) return null;
-            return <polygon key={i} points={`${toX(p.d)},${toY(chart.normPerDay)} ${toX(p.d)},${toY(p.v)} ${toX(nx.d)},${toY(nx.v)} ${toX(nx.d)},${toY(chart.normPerDay)}`} fill="rgba(239,68,68,0.12)"/>;
-          })}
-          {/* Norm line */}
-          <path d={normPath} stroke="#3b9ede" strokeWidth="0.8" strokeDasharray="2,1" fill="none"/>
-          {/* Avg line */}
-          <path d={avgPath} stroke={statusColor} strokeWidth="0.5" strokeDasharray="1,1" fill="none" opacity="0.6"/>
-          {/* Received line */}
-          {recvPath&&<path d={recvPath} stroke="#f97316" strokeWidth="1.2" fill="none" strokeLinejoin="round"/>}
-          {/* Data points */}
-          {activePts.map(p=>(
-            <circle key={p.d} cx={toX(p.d)} cy={toY(p.v)} r="1.2"
-              fill={p.v<chart.normPerDay?'#ef4444':'#22c55e'} stroke="#0a0d16" strokeWidth="0.4"/>
-          ))}
-        </svg>
+      {activePts.length===0?(
+        <div style={{textAlign:'center',padding:'40px 0',color:C.sub,fontSize:12}}>No data entered yet — click Edit Bins Data to add</div>
+      ):(
+        <ResponsiveContainer width="100%" height={240}>
+          <AreaChart data={activePts} margin={{top:5,right:10,bottom:5,left:10}}>
+            <defs>
+              <linearGradient id={`binsGrad_${chart.label.replace(/[^a-z0-9]/gi,'_')}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+              </linearGradient>
+              <linearGradient id={`normGrad_${chart.label.replace(/[^a-z0-9]/gi,'_')}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15}/>
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+            <XAxis dataKey="date" tick={{fontSize:9,fill:C.sub}} axisLine={false} tickLine={false}/>
+            <YAxis tick={{fontSize:9,fill:C.sub}} axisLine={false} tickLine={false} width={30}/>
+            <Tooltip content={<CustomTooltip/>}/>
+            <Area type="monotone" dataKey="Norm" stroke="#3b82f6" fill={`url(#normGrad_${chart.label.replace(/[^a-z0-9]/gi,'_')})`} strokeWidth={2} strokeDasharray="5 4" dot={false}/>
+            <Area type="monotone" dataKey="Received" stroke="#22c55e" fill={`url(#binsGrad_${chart.label.replace(/[^a-z0-9]/gi,'_')})`} strokeWidth={2.5} dot={{r:3,fill:'#22c55e',stroke:'#0a0d16',strokeWidth:1}}
+              activeDot={{r:5,fill:'#22c55e'}}/>
+          </AreaChart>
+        </ResponsiveContainer>
+      )}
 
-        {/* Day labels + values below chart */}
-        <div style={{position:'absolute',bottom:0,left:0,right:0,display:'flex',justifyContent:'space-between',paddingTop:4}}>
-          {allDays.filter(d=>d%3===1||d===28).map(d=>{
-            const v=chart.daily[d];
-            const isShort=v!=null&&v<chart.normPerDay;
-            return (
-              <div key={d} style={{textAlign:'center',minWidth:18}}>
-                {v!=null&&<div style={{fontSize:7,fontWeight:800,color:isShort?'#ef4444':'#22c55e'}}>{v}</div>}
-                <div style={{fontSize:7,color:'#374151'}}>{d}</div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Legend */}
-      <div style={{display:'flex',gap:14,marginTop:8,fontSize:10,flexWrap:'wrap'}}>
-        <span style={{display:'flex',alignItems:'center',gap:4,color:'#3b9ede'}}>
-          <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="#3b9ede" strokeWidth="1.5" strokeDasharray="4,2"/></svg>
-          Norm ({chart.normPerDay}/day)
-        </span>
-        <span style={{display:'flex',alignItems:'center',gap:4,color:'#f97316'}}>
-          <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke="#f97316" strokeWidth="1.5"/></svg>
-          Received
-        </span>
-        <span style={{display:'flex',alignItems:'center',gap:4,color:statusColor}}>
-          <svg width="20" height="6"><line x1="0" y1="3" x2="20" y2="3" stroke={statusColor} strokeWidth="1" strokeDasharray="2,2"/></svg>
-          Avg ({chart.avgPerDay}/day)
-        </span>
-        <span style={{display:'flex',alignItems:'center',gap:4,color:'#ef4444'}}>
-          <div style={{width:10,height:6,background:'rgba(239,68,68,0.3)',borderRadius:1}}/> Shortage zone
-        </span>
+      <div style={{display:'flex',gap:16,justifyContent:'center',marginTop:8}}>
+        {[['#22c55e','Received'],['#3b82f6','Norm (dashed)']].map(([c,l])=>(
+          <div key={l} style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{width:20,height:3,background:c,borderRadius:2}}/>
+            <span style={{fontSize:11,color:C.sub}}>{l}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -1853,7 +1925,7 @@ function BinsTab({custId, custName, custBins, userProfile, activeUnit}){
     const rows = Array.from({length:new Date(year,month+1,0).getDate()},(_,i)=>{
       const d=i+1;
       const merged = mergedCharts.find(c=>c.label===chart.label)||chart;
-      return {day:d, qty:merged.daily[d]!=null?merged.daily[d]:''};
+      return {day:d, qty:merged.daily[d]!=null?merged.daily[d]:''};  // 0 is valid
     }).filter(r=>r.qty!==''||r.day<=today);
     setEntryRows(rows);
     setEntryChart(chart);
@@ -1865,7 +1937,7 @@ function BinsTab({custId, custName, custBins, userProfile, activeUnit}){
     try {
       const {setDoc,doc} = await import('firebase/firestore');
       const {db} = await import('../firebase');
-      await Promise.all(entryRows.filter(r=>r.qty!=='').map(r=>
+      await Promise.all(entryRows.filter(r=>r.qty!==''&&r.qty!==null&&r.qty!==undefined).map(r=>
         setDoc(doc(db,`bins_daily_${custId}`,`${year}_${String(month+1).padStart(2,'0')}_${entryChart.label.replace(/[\s()\/]/g,'_')}_${String(r.day).padStart(2,'0')}`),
           {year,month,day:r.day,custId,chartLabel:entryChart.label,qty:Number(r.qty)||0,updatedAt:new Date(),updatedBy:userProfile?.name||'PPC'},{merge:true})
       ));
@@ -1911,9 +1983,7 @@ function BinsTab({custId, custName, custBins, userProfile, activeUnit}){
             {l:'Parts',v:custBins.length,co:C.text},
             {l:'Std Bins',v:custBins.reduce((a,b)=>a+b.stdBins,0),co:C.teal},
             {l:'Req Bins',v:custBins.reduce((a,b)=>a+b.reqBins,0).toFixed(0),co:C.gold},
-            {l:'Received',v:custBins.reduce((a,b)=>a+b.received,0).toLocaleString(),co:C.green},
-            {l:'Available',v:custBins.reduce((a,b)=>a+b.available,0).toLocaleString(),co:C.purple},
-            {l:'Short Days',v:totalShortDays,co:totalShortDays>10?C.red:totalShortDays>5?C.orange:C.green},
+            {l:'Total Received',v:mergedCharts.reduce((a,c)=>a+Object.values(c.daily).reduce((s,v)=>s+v,0),0).toLocaleString(),co:C.green},
           ].map(k=>(
             <div key={k.l} style={{background:'#0a0d16',borderRadius:8,padding:'8px 12px',border:`1px solid ${C.border}`}}>
               <div style={{fontSize:18,fontWeight:900,color:k.co}}>{k.v}</div>
@@ -1987,10 +2057,10 @@ function BinsTab({custId, custName, custBins, userProfile, activeUnit}){
                 const isOk=Number(r.qty)>=entryChart.normPerDay;
                 return (
                   <div key={r.day} style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                    <span style={{fontSize:11,color:C.sub,minWidth:50}}>Jul {String(r.day).padStart(2,'0')}</span>
+                    <span style={{fontSize:11,color:C.sub,minWidth:50}}>{new Date(year,month,r.day).toLocaleDateString('en-IN',{day:'2-digit',month:'short'})}</span>
                     <div style={{flex:1,position:'relative'}}>
-                      <input type="number" inputMode="numeric" value={r.qty}
-                        onChange={e=>setEntryRows(rows=>rows.map((x,j)=>j===i?{...x,qty:e.target.value}:x))}
+                      <input type="number" inputMode="numeric" value={r.qty===''?'':r.qty}
+                        onChange={e=>setEntryRows(rows=>rows.map((x,j)=>j===i?{...x,qty:e.target.value===''?'':Number(e.target.value)}:x))}
                         style={{...numInp,width:'100%',textAlign:'right',
                           borderColor:isShort?'#dc2626':isOk?'#16a34a':C.border,
                           background:isShort?'#1a0808':isOk?'#0d2010':C.raised}}
@@ -2017,6 +2087,11 @@ function BinsTab({custId, custName, custBins, userProfile, activeUnit}){
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
+// Thin wrapper so ScheduleRevision renders inside Dispatch without sidebar
+function ScheduleRevisionInline({userProfile, activeUnit, onBack}) {
+  return <ScheduleRevisionComp userProfile={userProfile} activeUnit={activeUnit} onBack={onBack}/>;
+}
+
 export default function CustomerDashboard({dark,onBack,userProfile,unit}){
   const activeUnit = unit||'u1';
   const isPPC = userProfile?.role==='owner'||userProfile?.dept==='ppc';
@@ -2079,6 +2154,7 @@ export default function CustomerDashboard({dark,onBack,userProfile,unit}){
   const [entryModal,setEntryModal]=useState(null);
   const [showMaster,setShowMaster]=useState(false);
   const [showInsights,setShowInsights]=useState(false);
+  const [showRevision,setShowRevision]=useState(false);
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
   // Make current user name available to Firestore helper functions
@@ -2133,6 +2209,7 @@ export default function CustomerDashboard({dark,onBack,userProfile,unit}){
   const ragC=p=>p>=normsPct?C.green:p>=normsPct*0.6?C.orange:C.red;
 
   if(showInsights) return <InsightsPanel customers={customers} schedules={schedules} dailyData={dailyData} normsPercent={normsPercent} year={year} month={month} workingDays={effectiveWD} onClose={()=>setShowInsights(false)}/>;
+  if(showRevision) return <ScheduleRevisionInline userProfile={userProfile} activeUnit={activeUnit} onBack={()=>setShowRevision(false)}/>;
   if(showMaster)   return <ScheduleMasterEditor customers={customers} schedules={schedules} year={year} month={month} onSave={load} onClose={()=>setShowMaster(false)}/>;
   if(selected){
     const cust=customers.find(c=>c.id===selected);
@@ -2141,7 +2218,7 @@ export default function CustomerDashboard({dark,onBack,userProfile,unit}){
       <>
         <CustomerDetail customer={cust} schedules={schedules} dailyData={dailyData} normsPercent={normsPercent}
           onBack={()=>setSelected(null)} isPPC={isPPC} userProfile={userProfile}
-          schedLastUpd={schedLastUpd} dailyLastUpd={dailyLastUpd}
+          schedLastUpd={schedLastUpd} dailyLastUpd={dailyLastUpd} activeUnit={activeUnit}
           onSchedule={()=>setSchedModal(cust)} onEntry={()=>setEntryModal(cust)}/>
         {schedModal&&<ScheduleModal customer={schedModal} year={year} month={month} schedules={schedules} dailyData={dailyData} onSave={load} onClose={()=>setSchedModal(null)} activeUnit={activeUnit}/>}
         {entryModal&&<DailyEntryModal customer={entryModal} year={year} month={month} dailyData={dailyData} onSave={load} onClose={()=>setEntryModal(null)} activeUnit={activeUnit}/>}
@@ -2193,6 +2270,7 @@ export default function CustomerDashboard({dark,onBack,userProfile,unit}){
               </div>
             )}
             <button onClick={()=>setShowInsights(true)} style={{padding:'7px 14px',borderRadius:8,border:`1px solid ${C.purple}`,background:'#1a0d30',color:C.purple,fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>📈 Insights</button>
+            {(userProfile?.dept==='ppc'||userProfile?.role==='owner'||['owner@alubee.com','md@alubee.com','gopi@alubee.com','udhay@alubee.com','gokul@alubee.com','loganathan.ppc@alubee.com'].includes(userProfile?.email))&&<button onClick={()=>setShowRevision(true)} style={{padding:'7px 14px',borderRadius:8,border:`1px solid ${C.orange}`,background:'rgba(249,115,22,0.1)',color:C.orange,fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>🔄 Schedule Revision</button>}
             {isPPC&&<button onClick={()=>setShowMaster(true)} style={{padding:'7px 14px',borderRadius:8,border:`1px solid ${C.gold}`,background:'#1a1200',color:C.gold,fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>📋 Schedule Master</button>}
           </div>
         </div>
@@ -2310,3 +2388,253 @@ export default function CustomerDashboard({dark,onBack,userProfile,unit}){
     </div>
   );
 }
+
+// ── HISTORY TAB — 6-month intake per part ─────────────────────────────────────
+const HISTORY_MONTHS = 6;
+const REVISION_REASONS = [
+  'Based on last 6-month average intake',
+  'Customer hold instruction',
+  'Bin supply issue — bins not returned',
+  'MOQ not met — volume too low',
+  'Customer PO revised downward',
+  'Customer PO revised upward',
+  'Volume spike — customer demand increased',
+  'Seasonal demand adjustment',
+  'New part introduced — replacing old',
+  'Other',
+];
+
+function HistoryTab({ customer, activeUnit }) {
+  const [histData, setHistData] = useState(null); // {partNo: {YYYY-MM: qty}}
+  const [loading, setLoading] = useState(true);
+  const [migModal, setMigModal] = useState(false);
+
+  const now = new Date();
+  const months = Array.from({ length: HISTORY_MONTHS }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (HISTORY_MONTHS - 1 - i), 1);
+    return { key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`, label: d.toLocaleString('en-IN',{month:'short',year:'2-digit'}) };
+  });
+
+  useEffect(() => {
+    if (!customer?.id) return;
+    setLoading(true);
+    async function load() {
+      try {
+        const { getDocs, query, collection, where } = await import('firebase/firestore');
+        const { db } = await import('../firebase');
+        const col = `customer_history_${activeUnit==='u2'?'u2':'u1'}`;
+        const snap = await getDocs(query(collection(db, col), where('custId','==',customer.id)));
+        const map = {};
+        snap.docs.forEach(d => {
+          const { partNo, monthKey, qty } = d.data();
+          if (!map[partNo]) map[partNo] = {};
+          map[partNo][monthKey] = qty || 0;
+        });
+        setHistData(map);
+      } catch(e) { setHistData({}); }
+      setLoading(false);
+    }
+    load();
+  }, [customer?.id, activeUnit]);
+
+  const parts = customer?.parts || [];
+
+  // Calculate avg and detect spikes
+  function getStats(partNo) {
+    const d = histData?.[partNo] || {};
+    const vals = months.map(m => d[m.key] || 0);
+    const nonZero = vals.filter(v => v > 0);
+    const avg = nonZero.length > 0 ? Math.round(nonZero.reduce((a,v)=>a+v,0)/nonZero.length) : 0;
+    return { vals, avg };
+  }
+
+  function spikeColor(val, avg) {
+    if (!avg || !val) return 'transparent';
+    const ratio = val / avg;
+    if (ratio > 1.3) return 'rgba(34,197,94,0.15)';   // spike up — green
+    if (ratio < 0.7) return 'rgba(239,68,68,0.15)';   // spike down — red
+    return 'transparent';
+  }
+  function spikeLabel(val, avg) {
+    if (!avg || !val) return '';
+    const pct = Math.round(((val-avg)/avg)*100);
+    if (pct > 30) return `▲${pct}%`;
+    if (pct < -30) return `▼${Math.abs(pct)}%`;
+    return '';
+  }
+
+  const hasData = histData && Object.keys(histData).length > 0;
+
+  return (
+    <div>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:14,color:C.text}}>📈 6-Month Intake History</div>
+          <div style={{fontSize:11,color:C.sub,marginTop:2}}>Last {HISTORY_MONTHS} months actual dispatch from customer</div>
+        </div>
+        <button onClick={()=>setMigModal(true)}
+          style={{padding:'7px 16px',borderRadius:8,border:`1px solid ${C.orange}`,background:'rgba(249,115,22,0.1)',color:C.orange,fontWeight:700,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+          📥 Enter / Update History
+        </button>
+      </div>
+
+      {loading && <div style={{textAlign:'center',padding:40,color:C.sub}}>Loading…</div>}
+
+      {!loading && !hasData && (
+        <div style={{textAlign:'center',padding:40,color:C.sub}}>
+          <div style={{fontSize:32,marginBottom:12}}>📊</div>
+          <div style={{fontWeight:700,marginBottom:4}}>No historical data yet</div>
+          <div style={{fontSize:12}}>Click "Enter / Update History" to add the last 6 months intake data</div>
+        </div>
+      )}
+
+      {!loading && hasData && (
+        <div style={{overflowX:'auto'}}>
+          {/* Legend */}
+          <div style={{display:'flex',gap:16,marginBottom:10,fontSize:11}}>
+            <span style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:12,height:12,background:'rgba(34,197,94,0.3)',borderRadius:2}}/> Spike up &gt;30%</span>
+            <span style={{display:'flex',alignItems:'center',gap:4}}><div style={{width:12,height:12,background:'rgba(239,68,68,0.2)',borderRadius:2}}/> Drop &gt;30%</span>
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11,minWidth:600}}>
+            <thead>
+              <tr style={{background:C.raised}}>
+                <th style={{padding:'8px 10px',textAlign:'left',color:C.sub,fontWeight:700,borderBottom:`1px solid ${C.border}`,whiteSpace:'nowrap'}}>Part</th>
+                {months.map(m=><th key={m.key} style={{padding:'8px 10px',textAlign:'center',color:C.sub,fontWeight:700,borderBottom:`1px solid ${C.border}`,whiteSpace:'nowrap'}}>{m.label}</th>)}
+                <th style={{padding:'8px 10px',textAlign:'center',color:C.amber,fontWeight:700,borderBottom:`1px solid ${C.border}`}}>6M Avg</th>
+                <th style={{padding:'8px 10px',textAlign:'center',color:C.sub,fontWeight:700,borderBottom:`1px solid ${C.border}`}}>Trend</th>
+              </tr>
+            </thead>
+            <tbody>
+              {parts.map(p => {
+                const { vals, avg } = getStats(p.partNo);
+                const nonZero = vals.filter(v=>v>0);
+                let trend = '→';
+                if (nonZero.length >= 2) {
+                  const first = nonZero.slice(0, Math.floor(nonZero.length/2));
+                  const last  = nonZero.slice(Math.ceil(nonZero.length/2));
+                  const fAvg  = first.reduce((a,v)=>a+v,0)/first.length;
+                  const lAvg  = last.reduce((a,v)=>a+v,0)/last.length;
+                  if (lAvg > fAvg * 1.1) trend = '↑';
+                  else if (lAvg < fAvg * 0.9) trend = '↓';
+                }
+                return (
+                  <tr key={p.partNo}>
+                    <td style={{padding:'8px 10px',fontWeight:700,color:C.text,borderBottom:`1px solid ${C.border}`}}>
+                      <div>{p.partName||p.partNo}</div>
+                      <div style={{fontSize:9,color:C.sub}}>{p.partNo}</div>
+                    </td>
+                    {months.map((m,i) => {
+                      const v = vals[i];
+                      const lbl = spikeLabel(v, avg);
+                      return (
+                        <td key={m.key} style={{padding:'8px 10px',textAlign:'center',borderBottom:`1px solid ${C.border}`,background:spikeColor(v,avg)}}>
+                          <div style={{fontWeight:v>0?700:400,color:v>0?C.text:C.sub}}>{v>0?v.toLocaleString('en-IN'):'—'}</div>
+                          {lbl&&<div style={{fontSize:8,color:lbl.startsWith('▲')?C.green:C.red,fontWeight:800}}>{lbl}</div>}
+                        </td>
+                      );
+                    })}
+                    <td style={{padding:'8px 10px',textAlign:'center',borderBottom:`1px solid ${C.border}`,color:C.amber,fontWeight:800}}>
+                      {avg>0?avg.toLocaleString('en-IN'):'—'}
+                    </td>
+                    <td style={{padding:'8px 10px',textAlign:'center',borderBottom:`1px solid ${C.border}`,fontSize:16,color:trend==='↑'?C.green:trend==='↓'?C.red:C.sub}}>
+                      {trend}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {migModal && <HistoryMigrationModal customer={customer} months={months} existing={histData||{}} activeUnit={activeUnit} onClose={()=>{setMigModal(false);setLoading(true);setHistData(null);setLoading(false);}} onSaved={()=>{setMigModal(false);setLoading(true);setHistData(null);}}/>}
+    </div>
+  );
+}
+
+// ── HISTORY MIGRATION MODAL ────────────────────────────────────────────────────
+function HistoryMigrationModal({ customer, months, existing, activeUnit, onClose, onSaved }) {
+  const parts = customer?.parts || [];
+  const [rows, setRows] = useState(() => {
+    const init = {};
+    parts.forEach(p => {
+      init[p.partNo] = {};
+      months.forEach(m => { init[p.partNo][m.key] = existing[p.partNo]?.[m.key] ?? ''; });
+    });
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+  const upd = (partNo, monthKey, val) => setRows(r => ({ ...r, [partNo]: { ...r[partNo], [monthKey]: val } }));
+
+  async function save() {
+    setSaving(true);
+    try {
+      const { doc, setDoc } = await import('firebase/firestore');
+      const { db } = await import('../firebase');
+      const col = `customer_history_${activeUnit==='u2'?'u2':'u1'}`;
+      for (const p of parts) {
+        for (const m of months) {
+          const val = parseInt(rows[p.partNo]?.[m.key]) || 0;
+          const docId = `${customer.id}_${p.partNo.replace(/[^a-zA-Z0-9]/g,'_')}_${m.key}`;
+          await setDoc(doc(db, col, docId), {
+            custId: customer.id, custName: customer.name,
+            partNo: p.partNo, partName: p.partName||p.partNo,
+            monthKey: m.key, qty: val,
+            updatedAt: new Date(),
+          });
+        }
+      }
+      onSaved();
+    } catch(e) { alert('Save failed: '+e.message); }
+    setSaving(false);
+  }
+
+  const inp = { border:`1px solid ${C.border}`,borderRadius:6,padding:'4px 6px',fontSize:11,outline:'none',background:C.raised,color:C.text,fontFamily:'inherit',width:'100%',boxSizing:'border-box',textAlign:'center' };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.75)',zIndex:1000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div style={{background:C.card,border:`1px solid ${C.border}`,borderRadius:16,maxWidth:800,width:'100%',maxHeight:'90vh',display:'flex',flexDirection:'column'}}>
+        <div style={{padding:'16px 20px',borderBottom:`1px solid ${C.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:900,fontSize:15,color:C.text}}>📥 Enter Historical Intake — {customer.name}</div>
+            <div style={{fontSize:11,color:C.sub,marginTop:2}}>Enter actual monthly dispatch quantities for last 6 months</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:C.sub,fontSize:22,cursor:'pointer'}}>×</button>
+        </div>
+        <div style={{overflowY:'auto',padding:'16px 20px',flex:1}}>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+            <thead>
+              <tr style={{background:C.raised}}>
+                <th style={{padding:'7px 8px',textAlign:'left',color:C.sub,fontWeight:700,borderBottom:`1px solid ${C.border}`}}>Part</th>
+                {months.map(m=><th key={m.key} style={{padding:'7px 8px',textAlign:'center',color:C.sub,fontWeight:700,borderBottom:`1px solid ${C.border}`,minWidth:80}}>{m.label}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {parts.map(p => (
+                <tr key={p.partNo}>
+                  <td style={{padding:'7px 8px',fontWeight:700,color:C.text,borderBottom:`1px solid ${C.border}`}}>
+                    <div>{p.partName||p.partNo}</div>
+                    <div style={{fontSize:9,color:C.sub}}>{p.partNo}</div>
+                  </td>
+                  {months.map(m => (
+                    <td key={m.key} style={{padding:'4px 6px',borderBottom:`1px solid ${C.border}`}}>
+                      <input type="number" min={0} style={inp} value={rows[p.partNo]?.[m.key]??''} onChange={e=>upd(p.partNo,m.key,e.target.value)}/>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{padding:'12px 20px',borderTop:`1px solid ${C.border}`,display:'flex',gap:8}}>
+          <button onClick={onClose} style={{flex:1,padding:'10px',borderRadius:8,border:`1px solid ${C.border}`,background:'transparent',color:C.sub,fontWeight:700,cursor:'pointer',fontFamily:'inherit'}}>Cancel</button>
+          <button onClick={save} disabled={saving} style={{flex:2,padding:'10px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',fontWeight:800,fontSize:13,cursor:saving?'not-allowed':'pointer',fontFamily:'inherit'}}>
+            {saving?'⏳ Saving…':'💾 Save History'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── REVISION TAB ──────────────────────────────────────────────────────────────

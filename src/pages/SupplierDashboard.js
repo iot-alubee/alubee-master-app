@@ -111,8 +111,9 @@ async function saveDailyEntry(year, month, day, supplierId, partNo, inward, outw
     { year, month, day, supplierId, partNo,
       inward: Number(inward)||0, outward: Number(outward)||0, updatedAt: new Date(), updatedBy: updatedBy||'PPC' }, { merge:true });
 }
-async function getDailyEntries(year, month) {
-  const q = query(collection(db,'supplier_daily'), where('year','==',year), where('month','==',month));
+async function getDailyEntries(year, month, unit) {
+  const u = unit||'u1';
+  const q = query(collection(db,`supplier_daily${u==='u2'?'_u2':''}`), where('year','==',year), where('month','==',month));
   const snap = await getDocs(q); const r = {};
   snap.forEach(d => {
     const dat = d.data();
@@ -120,7 +121,19 @@ async function getDailyEntries(year, month) {
     if (!r[supplierId]) r[supplierId] = {};
     if (!r[supplierId][partNo]) r[supplierId][partNo] = {};
     r[supplierId][partNo][day] = { inward:inward||0, outward:outward||0 };
-    if (updatedAt) { if(!r._lastUpd||updatedAt>r._lastUpd.at) r._lastUpd={at:updatedAt,by:updatedBy||'—'}; }
+    // Normalize updatedAt to ms for comparison
+    if (updatedAt) {
+      let ms = null;
+      try {
+        if (updatedAt instanceof Date) ms = updatedAt.getTime();
+        else if (updatedAt.toDate) ms = updatedAt.toDate().getTime();
+        else if (updatedAt.seconds) ms = updatedAt.seconds*1000;
+        else ms = new Date(updatedAt).getTime();
+      } catch(e) {}
+      if (ms && !isNaN(ms) && (!r._lastUpd || ms > r._lastUpd.ms)) {
+        r._lastUpd = { ms, at: new Date(ms), by: updatedBy||'—' };
+      }
+    }
   });
   return r;
 }
@@ -889,6 +902,47 @@ function OverallSummary({ suppliers, schedules, dailyData, normsPercent, year, m
           ))}
         </div>
       </div>
+
+      {/* ── INSIGHTS ─────────────────────────────────────────────────────── */}
+      <div style={{marginTop:16,background:'#f8fafc',borderRadius:12,border:'1px solid #e2e8f0',padding:'16px'}}>
+        <div style={{fontWeight:800,fontSize:14,color:C.gray,marginBottom:12}}>📊 Supplier Insights</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))',gap:10,marginBottom:14}}>
+          {[
+            {l:'Dispatch %',      v:`${Math.round(dispPct*100)}%`,       c:dispPct>=normsPercent?'#15803d':'#dc2626'},
+            {l:'Backlog qty',     v:(totSched-totInw).toLocaleString('en-IN'), c:'#ea580c'},
+            {l:'Order Value',     v:`₹${totValL.toFixed(2)}L`,           c:'#1e40af'},
+            {l:'Dispatched Value',v:`₹${totDispL.toFixed(2)}L`,          c:'#15803d'},
+            {l:'Balance Value',   v:`₹${Math.max(0,totValL-totDispL).toFixed(2)}L`, c:'#dc2626'},
+          ].map(k=>(
+            <div key={k.l} style={{background:'#fff',borderRadius:8,padding:'10px 12px',border:'1px solid #e2e8f0'}}>
+              <div style={{fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
+              <div style={{fontSize:10,color:C.subtext,marginTop:2,textTransform:'uppercase',fontWeight:600}}>{k.l}</div>
+            </div>
+          ))}
+        </div>
+        {/* Supplier-wise performance vs norms */}
+        <div style={{fontWeight:700,fontSize:12,color:C.gray,marginBottom:8}}>SUPPLIER PERFORMANCE VS NORMS</div>
+        {supplierBreakdown.filter(s=>s.sched>0).map((s,i)=>{
+          const pct = s.sched>0?s.inw/s.sched:0;
+          const isOk = pct>=normsPercent;
+          return (
+            <div key={s.id} style={{marginBottom:10}}>
+              <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                <span style={{fontSize:12,fontWeight:700,color:C.gray}}>{s.name}</span>
+                <span style={{fontSize:12,fontWeight:800,color:isOk?'#15803d':'#dc2626'}}>{Math.round(pct*100)}% dispatched</span>
+              </div>
+              <div style={{height:8,background:'#e2e8f0',borderRadius:4,overflow:'hidden'}}>
+                <div style={{width:`${Math.min(pct*100,100)}%`,height:'100%',background:isOk?'#22c55e':'#ef4444',borderRadius:4,transition:'width 0.3s'}}/>
+              </div>
+              <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C.subtext,marginTop:2}}>
+                <span>Dispatched: {s.inw.toLocaleString('en-IN')}</span>
+                <span>Schedule: {s.sched.toLocaleString('en-IN')}</span>
+                <span style={{color:'#ea580c'}}>Balance: {(s.sched-s.inw).toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -915,6 +969,7 @@ export default function SupplierDashboard({ userRole, userDept, onBack, userProf
   const [manageModal, setManageModal] = useState(null);
   const [ragModal,    setRagModal]    = useState(null);
   const [addModal,    setAddModal]    = useState(false);
+  const [showInsights,setShowInsights]= useState(false);
 
   const isPPC = userRole==='owner' || userDept==='ppc' || ['owner@alubee.com','md@alubee.com','gopi@alubee.com','udhay@alubee.com'].includes(userProfile?.email);
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth();
@@ -970,30 +1025,28 @@ export default function SupplierDashboard({ userRole, userDept, onBack, userProf
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [sups, sched, daily, rag] = await Promise.all([
+      let daily = {};
+      const [sups, sched, _daily, rag] = await Promise.all([
         loadSupplierMaster(activeUnit),
         getSchedules(year, month, activeUnit).catch(()=>({})),
         getDailyEntries(year, month, activeUnit).catch(()=>({})),
         getRAGAll(year, month).catch(()=>({})),
       ]);
+      daily = _daily||{};
       setSuppliers(sups&&sups.length>0?sups:(activeUnit==='u2'?[]:DEFAULT_SUPPLIERS));
       setSchedules(sched||{});
-      setDailyData(daily||{});
+      setDailyData(daily);
       setRagData(rag||{});
+      // Set last updated from daily data
+      const lu = daily._lastUpd;
+      if (lu?.at) setLastUpdInfo({at:lu.at, by:lu.by||'—'});
+      else setLastUpdInfo({at:null,by:null});
     } catch(e) {
       console.error(e);
       setSuppliers([...DEFAULT_SUPPLIERS]);
     }
     finally {
       setLastSyncTime(new Date());
-      // Find most recent update across all supplier daily docs
-      try {
-        const lu = daily?._lastUpd;
-        if (lu) {
-          const dt = lu.at instanceof Date ? lu.at : lu.at?.toDate ? lu.at.toDate() : lu.at?.seconds ? new Date(lu.at.seconds*1000) : new Date(lu.at);
-          setLastUpdInfo({at:dt,by:lu.by||'—'});
-        } else { setLastUpdInfo({at:null,by:null}); }
-      } catch(e){}
       setLoading(false);
     }
   }, [year, month]);
@@ -1001,6 +1054,13 @@ export default function SupplierDashboard({ userRole, userDept, onBack, userProf
   useEffect(()=>{ load(); },[load]);
 
   const activeSupplier = view!=='overview' ? suppliers.find(s=>s.id===view) : null;
+
+  if (showInsights) return (
+    <SupplierInsightsPanel
+      suppliers={suppliers} schedules={schedules} dailyData={dailyData}
+      normsPercent={normsPercent} year={year} month={month}
+      workingDays={effectiveWD} onClose={()=>setShowInsights(false)}/>
+  );
 
   return (
     <div style={{minHeight:'100vh',background:'#f1f5f9',fontFamily:'Inter,system-ui,sans-serif'}}>
@@ -1081,6 +1141,10 @@ export default function SupplierDashboard({ userRole, userDept, onBack, userProf
               {s.name.length>13?s.name.slice(0,13)+'…':s.name}
             </button>
           ))}
+          <button onClick={()=>setShowInsights(true)}
+              style={{padding:'7px 14px',borderRadius:20,border:'1.5px solid #818cf8',background:'rgba(129,140,248,0.15)',color:'#818cf8',fontWeight:800,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
+              📊 Insights
+            </button>
           {isPPC && (
             <button onClick={()=>setAddModal(true)}
               style={{padding:'7px 14px',borderRadius:20,border:'1.5px dashed rgba(255,255,255,0.6)',background:'transparent',color:'#fff',fontWeight:800,fontSize:12,cursor:'pointer',whiteSpace:'nowrap'}}>
@@ -1191,6 +1255,362 @@ export default function SupplierDashboard({ userRole, userDept, onBack, userProf
       {ragModal   && <RAGModal supplier={ragModal} year={year} month={month} day={today} ragData={ragData} onSave={load} onClose={()=>setRagModal(null)}/>}
       {manageModal && <ManageModal supplier={manageModal} onSave={async s=>{await saveSupplierMaster(s,activeUnit);setSuppliers(p=>p.map(x=>x.id===s.id?s:x));setManageModal(null);}} onDelete={async id=>{await deleteSupplierMaster(id,activeUnit);setSuppliers(p=>p.filter(x=>x.id!==id));if(view===id)setView('overview');setManageModal(null);}} onClose={()=>setManageModal(null)}/>}
       {addModal && <AddModal existingCount={suppliers.length} onSave={s=>{setSuppliers(p=>[...p,s]);setAddModal(false);}} onClose={()=>setAddModal(false)}/>}
+    </div>
+  );
+}
+
+// ─── SUPPLIER INSIGHTS PANEL ──────────────────────────────────────────────────
+function SupplierInsightsPanel({ suppliers, schedules, dailyData, normsPercent, year, month, workingDays, onClose }) {
+  const {AreaChart,Area,XAxis,YAxis,CartesianGrid,Tooltip,ResponsiveContainer,BarChart,Bar,Cell} = require('recharts');
+  const [view, setView] = React.useState('morning');
+
+  const WORKING_DAYS = workingDays || getWorkingDaysInMonth(year,month);
+  const today = new Date().getDate();
+  const daysElapsed  = Math.max(getWorkingDaysElapsed(year,month,today-1),1);
+  const daysLeft     = Math.max(WORKING_DAYS - getWorkingDaysElapsed(year,month,today),1);
+  const fmtL = n => `₹${(n/100000).toFixed(2)}L`;
+  const fmtK = n => n>=1000?(n/1000).toFixed(1)+'K':Math.round(n).toLocaleString();
+  const PIE_COLORS=['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#f97316'];
+
+  // ── Per-supplier stats ──────────────────────────────────────────────────────
+  const allStats = suppliers.map(s=>{
+    const parts = s.parts.map(p=>{
+      const ex=(schedules[s.id]||{})[p.partNo]||{};
+      const schQ=ex.scheduleQty||0; const opening=ex.openingStock||0;
+      const {inw,outw}=aggPart(dailyData,s.id,p.partNo);
+      const wip=Math.max(0,opening+outw-inw);
+      const dispDays=Object.keys((dailyData[s.id]||{})[p.partNo]||{}).map(Number).filter(d=>((dailyData[s.id]||{})[p.partNo]||{})[d]?.inward>0);
+      const lastDay=dispDays.length?Math.max(...dispDays):0;
+      const daysSinceLast=lastDay?Math.max(0,getWorkingDaysElapsed(year,month,today)-getWorkingDaysElapsed(year,month,lastDay)):999;
+      return {...p,schQ,inw,outw,wip,opening,orderVal:schQ*p.rate,achVal:inw*p.rate,
+        bal:Math.max(0,schQ-inw),lastDay,daysSinceLast,
+        dispPct:schQ>0?inw/schQ*100:0};
+    });
+    const totSch=parts.reduce((a,p)=>a+p.schQ,0);
+    const totInw=parts.reduce((a,p)=>a+p.inw,0);
+    const totOutw=parts.reduce((a,p)=>a+p.outw,0);
+    const totWip=parts.reduce((a,p)=>a+p.wip,0);
+    const totVal=parts.reduce((a,p)=>a+p.orderVal,0);
+    const totAch=parts.reduce((a,p)=>a+p.achVal,0);
+    const dispPct=totSch>0?totInw/totSch*100:0;
+    const currRate=daysElapsed>0?totInw/daysElapsed:0;
+    const reqRate=daysLeft>0?Math.max(0,totSch-totInw)/daysLeft:0;
+    const projInw=totInw+currRate*daysLeft;
+    const projVal=totAch+(currRate*daysLeft*(totVal/Math.max(totSch,1)));
+    const valAtRisk=Math.max(0,totVal-projVal);
+    const stalled=parts.filter(p=>p.schQ>0&&p.daysSinceLast>=3&&p.inw<p.schQ);
+    const status=dispPct>=normsPercent*100?'ok':dispPct>=normsPercent*60?'risk':'crit';
+    return {id:s.id,name:s.name,parts,totSch,totInw,totOutw,totWip,totVal,totAch,
+      dispPct,currRate,reqRate,projInw,projVal,valAtRisk,stalled,status,
+      bal:Math.max(0,totSch-totInw)};
+  }).filter(s=>s.totSch>0);
+
+  const grand={
+    sch:allStats.reduce((a,s)=>a+s.totSch,0),
+    inw:allStats.reduce((a,s)=>a+s.totInw,0),
+    outw:allStats.reduce((a,s)=>a+s.totOutw,0),
+    wip:allStats.reduce((a,s)=>a+s.totWip,0),
+    val:allStats.reduce((a,s)=>a+s.totVal,0),
+    ach:allStats.reduce((a,s)=>a+s.totAch,0),
+  };
+  const grandRate=daysElapsed>0?grand.inw/daysElapsed:0;
+  const grandReq=daysLeft>0?Math.max(0,grand.sch-grand.inw)/daysLeft:0;
+  const projGrand=grand.ach+(grandRate*daysLeft*(grand.val/Math.max(grand.sch,1)));
+  const strikeRate=daysLeft>0?Math.max(0,grand.val-grand.ach)/daysLeft:0;
+
+  // Daily totals
+  const dailyTotals={};
+  suppliers.forEach(s=>{
+    s.parts.forEach(p=>{
+      const pd=(dailyData[s.id]||{})[p.partNo]||{};
+      Object.entries(pd).forEach(([d,v])=>{
+        const qty=v?.inward||0;
+        if(qty>0) dailyTotals[d]=(dailyTotals[d]||0)+qty;
+      });
+    });
+  });
+  const dispDays=Object.keys(dailyTotals).sort((a,b)=>Number(a)-Number(b));
+  const chartData=dispDays.map(d=>({date:`${d}`,Received:dailyTotals[d]||0,Required:Math.round(grandReq)}));
+
+  const critical=allStats.filter(s=>s.status==='crit');
+  const atRisk=allStats.filter(s=>s.status==='risk');
+  const allStalled=allStats.flatMap(s=>s.stalled.map(p=>({...p,suppName:s.name})));
+  const overloaded=allStats.filter(s=>s.reqRate>s.currRate*2&&s.currRate>0);
+
+  const statusBg=s=>s==='ok'?'#0d2010':s==='risk'?'#1a1200':'#200808';
+  const statusColor=s=>s==='ok'?'#22c55e':s==='risk'?'#f97316':'#ef4444';
+  const statusLabel=s=>s==='ok'?'✅ ON TRACK':s==='risk'?'⚠ AT RISK':'🔴 CRITICAL';
+  const C2={bg:'#0F1117',card:'#181C2E',raised:'#1E2340',border:'#252D50',text:'#E6EDF3',sub:'#8892B0',green:'#22c55e',red:'#ef4444',orange:'#f97316',blue:'#3b82f6'};
+
+  const VIEWS=[{id:'morning',l:'⚡ Morning View'},{id:'monthly',l:'📅 Monthly View'},{id:'supplier',l:'📦 By Supplier'}];
+
+  return (
+    <div style={{minHeight:'100vh',background:C2.bg,fontFamily:'Inter,system-ui,sans-serif',color:C2.text}}>
+      {/* Header */}
+      <div style={{background:'#0B1628',borderBottom:`1px solid ${C2.border}`,padding:'12px 20px',position:'sticky',top:0,zIndex:10}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',marginBottom:10}}>
+          <button onClick={onClose} style={{background:'rgba(255,255,255,0.1)',border:'none',borderRadius:8,color:'#fff',padding:'6px 14px',cursor:'pointer',fontFamily:'inherit',fontSize:13}}>← Back</button>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:900,fontSize:18,color:'#fff'}}>📊 Supplier Insights — {new Date(year,month).toLocaleString('en-IN',{month:'long',year:'numeric'})}</div>
+            <div style={{fontSize:11,color:C2.sub,marginTop:2}}>Day {getWorkingDaysElapsed(year,month,today)} of {WORKING_DAYS} · {daysLeft} working days left · Norms: {Math.round(normsPercent*100)}%</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            {VIEWS.map(v=>(
+              <button key={v.id} onClick={()=>setView(v.id)} style={{padding:'7px 14px',borderRadius:8,border:`1px solid ${view===v.id?'#818cf8':C2.border}`,background:view===v.id?'#1a0d30':'transparent',color:view===v.id?'#818cf8':C2.sub,fontWeight:view===v.id?700:400,fontSize:12,cursor:'pointer',fontFamily:'inherit'}}>
+                {v.l}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* KPI Strip */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8}}>
+          {[
+            {l:'Avg Inward/Day',   v:fmtK(Math.round(grandRate)),   co:'#22d3ee', s:`${daysElapsed} days elapsed`},
+            {l:'Required/Day',     v:fmtK(Math.round(grandReq)),    co:grandReq>grandRate*1.5?'#ef4444':grandReq>grandRate?'#f97316':'#22c55e', s:'To clear balance', alert:grandReq>grandRate*2},
+            {l:'Strike Rate',      v:fmtL(strikeRate)+'/day',       co:'#f59e0b', s:'Value/day to hit 100%'},
+            {l:'Order Value',      v:fmtL(grand.val),               co:C2.text,   s:'Schedule × rate'},
+            {l:'Value Achieved',   v:fmtL(grand.ach),               co:'#22c55e', s:`${(grand.ach/(grand.val||1)*100).toFixed(1)}% of order`},
+            {l:'WIP at Supplier',  v:fmtK(grand.wip),               co:'#818cf8', s:'Opening+Out−In'},
+            {l:'Value at Risk',    v:fmtL(Math.max(0,grand.val-projGrand)), co:'#f87171', s:'If pace stays same', alert:true},
+            {l:'Days Left',        v:`${daysLeft}d`,                co:daysLeft<=3?'#ef4444':daysLeft<=7?'#f97316':'#3b82f6', s:'Working days'},
+          ].map(k=>(
+            <div key={k.l} style={{background:k.alert?'#1a0808':C2.card,border:`1px solid ${k.alert?'#7f1d1d':C2.border}`,borderRadius:10,padding:'10px 12px'}}>
+              <div style={{fontSize:16,fontWeight:900,color:k.co}}>{k.v}</div>
+              <div style={{fontSize:9,color:C2.text,fontWeight:600,marginTop:1}}>{k.l}</div>
+              <div style={{fontSize:8,color:C2.sub}}>{k.s}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{padding:'16px 20px',maxWidth:1200,margin:'0 auto'}}>
+
+        {/* ── MORNING VIEW ──────────────────────────────────────────────── */}
+        {view==='morning'&&(<>
+          {/* Alert Panel */}
+          {(critical.length>0||overloaded.length>0||allStalled.length>0)&&(
+            <div style={{background:'#1a0808',borderRadius:12,border:'1.5px solid #7f1d1d',padding:'14px 16px',marginBottom:16}}>
+              <div style={{fontWeight:800,fontSize:13,color:'#fca5a5',marginBottom:12}}>🚨 Action Required Today</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))',gap:10}}>
+                {critical.length>0&&(
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:'#f87171',marginBottom:6}}>🔴 Critical — {critical.length} suppliers below 50% target</div>
+                    {critical.map(s=>(
+                      <div key={s.id} style={{display:'flex',justifyContent:'space-between',fontSize:10,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+                        <span style={{color:'#fca5a5'}}>{s.name}</span>
+                        <span style={{color:'#f87171',fontWeight:700}}>{s.dispPct.toFixed(0)}% · need {fmtK(Math.round(s.reqRate))}/day</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {overloaded.length>0&&(
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:'#f97316',marginBottom:6}}>⚡ Run Rate 2× above current pace</div>
+                    {overloaded.map(s=>(
+                      <div key={s.id} style={{display:'flex',justifyContent:'space-between',fontSize:10,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+                        <span style={{color:'#fed7aa'}}>{s.name}</span>
+                        <span style={{color:'#f97316',fontWeight:700}}>Need {fmtK(Math.round(s.reqRate))} · avg {fmtK(Math.round(s.currRate))}/day</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {allStalled.length>0&&(
+                  <div>
+                    <div style={{fontSize:11,fontWeight:700,color:'#f87171',marginBottom:6}}>⏸ Zero inward ≥3 working days</div>
+                    {allStalled.slice(0,6).map((p,i)=>(
+                      <div key={i} style={{display:'flex',justifyContent:'space-between',fontSize:10,padding:'3px 0',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+                        <span style={{color:'#fca5a5'}}>{p.suppName} · {p.partNo}</span>
+                        <span style={{color:'#f87171',fontWeight:700}}>{p.daysSinceLast>=999?'No inward this month':`${p.daysSinceLast}d stalled`}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Daily Inward Chart */}
+          <div style={{background:C2.card,border:`1px solid ${C2.border}`,borderRadius:12,padding:'16px',marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:13,color:C2.text,marginBottom:4}}>Daily Inward — All Suppliers (Qty)</div>
+            <div style={{fontSize:11,color:C2.sub,marginBottom:12}}>Avg {fmtK(Math.round(grandRate))}/day · Required {fmtK(Math.round(grandReq))}/day to close</div>
+            {chartData.length>0?(
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} margin={{top:5,right:10,bottom:5,left:10}}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+                  <XAxis dataKey="date" tick={{fontSize:9,fill:C2.sub}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:9,fill:C2.sub}} axisLine={false} tickLine={false} width={35}/>
+                  <Tooltip contentStyle={{background:C2.card,border:`1px solid ${C2.border}`,borderRadius:8,fontSize:11}}/>
+                  <Bar dataKey="Received" fill="#22c55e" radius={[3,3,0,0]}>
+                    {chartData.map((e,i)=>(
+                      <Cell key={i} fill={e.Received>=grandReq?'#22c55e':'#f97316'}/>
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            ):<div style={{textAlign:'center',padding:'40px',color:C2.sub,fontSize:12}}>No inward data entered yet</div>}
+          </div>
+
+          {/* Supplier status table */}
+          <div style={{background:C2.card,border:`1px solid ${C2.border}`,borderRadius:12,padding:'16px',marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:13,color:C2.text,marginBottom:12}}>Supplier Status — Inward vs Required</div>
+            <div style={{border:`1px solid ${C2.border}`,borderRadius:10,overflow:'hidden'}}>
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr',padding:'7px 12px',background:C2.raised,gap:0}}>
+                {['Supplier','Schedule','Inward','Balance','Curr/day','Req/day','Status'].map(h=>(
+                  <div key={h} style={{fontSize:9,fontWeight:800,color:C2.sub,textTransform:'uppercase'}}>{h}</div>
+                ))}
+              </div>
+              {allStats.map(s=>(
+                <div key={s.id} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr 1fr',padding:'8px 12px',borderTop:`1px solid ${C2.border}`,background:statusBg(s.status),gap:0,alignItems:'center',fontSize:11}}>
+                  <div style={{fontWeight:700,color:C2.text}}>{s.name}</div>
+                  <div style={{color:C2.blue,fontWeight:700}}>{fmtK(s.totSch)}</div>
+                  <div style={{color:'#22c55e',fontWeight:700}}>{fmtK(s.totInw)}</div>
+                  <div style={{color:'#f97316',fontWeight:700}}>{fmtK(s.bal)}</div>
+                  <div style={{color:C2.sub}}>{fmtK(Math.round(s.currRate))}/d</div>
+                  <div style={{color:s.reqRate>s.currRate?'#ef4444':'#22c55e',fontWeight:700}}>{fmtK(Math.round(s.reqRate))}/d</div>
+                  <div><span style={{background:statusBg(s.status),color:statusColor(s.status),border:`1px solid ${statusColor(s.status)}33`,borderRadius:5,padding:'2px 7px',fontSize:9,fontWeight:700}}>{statusLabel(s.status)}</span></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Month-end projection */}
+          <div style={{background:C2.card,border:`1px solid ${C2.border}`,borderRadius:12,padding:'16px',marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:13,color:C2.text,marginBottom:12}}>📊 Month-end Projection at Current Pace</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}}>
+              {[
+                {l:'Order Value (Target)',v:fmtL(grand.val),co:C2.text},
+                {l:'Achieved So Far',v:fmtL(grand.ach),co:'#22c55e'},
+                {l:'Projected Month-end',v:fmtL(projGrand),co:projGrand>=grand.val?'#22c55e':'#f97316'},
+                {l:'Projected Gap',v:(grand.val>projGrand?'↓ Short ':'')+fmtL(Math.abs(grand.val-projGrand)),co:grand.val>projGrand?'#ef4444':'#22c55e'},
+              ].map(k=>(
+                <div key={k.l} style={{background:C2.raised,borderRadius:10,padding:'12px'}}>
+                  <div style={{fontSize:16,fontWeight:900,color:k.co}}>{k.v}</div>
+                  <div style={{fontSize:9,color:C2.sub,marginTop:3,textTransform:'uppercase',fontWeight:700}}>{k.l}</div>
+                </div>
+              ))}
+            </div>
+            {/* Progress bar */}
+            <div style={{height:18,background:C2.raised,borderRadius:9,overflow:'hidden',position:'relative',marginBottom:6}}>
+              <div style={{position:'absolute',top:0,left:0,width:`${Math.min(grand.ach/grand.val*100,100)}%`,height:'100%',background:'#22c55e',borderRadius:9}}/>
+              <div style={{position:'absolute',top:0,left:`${Math.min(grand.ach/grand.val*100,100)}%`,width:`${Math.max(0,Math.min((projGrand-grand.ach)/grand.val*100,100-grand.ach/grand.val*100))}%`,height:'100%',background:'#f97316',opacity:0.7}}/>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:C2.sub}}>
+              <span>₹0</span>
+              <span style={{color:'#22c55e'}}>Achieved: {fmtL(grand.ach)} ({(grand.ach/grand.val*100).toFixed(0)}%)</span>
+              <span style={{color:'#f97316'}}>Projected: {fmtL(projGrand)}</span>
+              <span>{fmtL(grand.val)}</span>
+            </div>
+            {/* Supplier-wise projection */}
+            <div style={{marginTop:14}}>
+              <div style={{fontWeight:700,fontSize:12,color:C2.text,marginBottom:8}}>Supplier-wise Projection</div>
+              <div style={{border:`1px solid ${C2.border}`,borderRadius:10,overflow:'hidden'}}>
+                <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',padding:'6px 12px',background:C2.raised}}>
+                  {['Supplier','Achieved','Order Value','Projected','Gap'].map(h=>(
+                    <div key={h} style={{fontSize:9,fontWeight:800,color:C2.sub,textTransform:'uppercase'}}>{h}</div>
+                  ))}
+                </div>
+                {allStats.map(s=>{
+                  const short=s.projVal<s.totVal;
+                  return(
+                    <div key={s.id} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr',padding:'7px 12px',borderTop:`1px solid ${C2.border}`,background:short?'rgba(239,68,68,0.04)':'transparent',fontSize:11,alignItems:'center'}}>
+                      <div style={{fontWeight:700,color:C2.text}}>{s.name}</div>
+                      <div style={{color:'#22c55e',fontWeight:700}}>{fmtL(s.totAch)}</div>
+                      <div style={{color:C2.sub}}>{fmtL(s.totVal)}</div>
+                      <div style={{color:short?'#f97316':'#22c55e',fontWeight:800}}>{fmtL(s.projVal)}</div>
+                      <div style={{color:short?'#ef4444':'#22c55e',fontWeight:700,fontSize:10}}>{short?`↓ ${fmtL(s.totVal-s.projVal)} short`:'✅ On track'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </>)}
+
+        {/* ── MONTHLY VIEW ──────────────────────────────────────────────── */}
+        {view==='monthly'&&(
+          <div style={{background:C2.card,border:`1px solid ${C2.border}`,borderRadius:12,padding:'16px',marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:13,color:C2.text,marginBottom:12}}>📅 Daily Inward Trend — {new Date(year,month).toLocaleString('en-IN',{month:'long',year:'numeric'})}</div>
+            {chartData.length>0?(
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={chartData} margin={{top:5,right:10,bottom:5,left:10}}>
+                  <defs>
+                    <linearGradient id="suppGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)"/>
+                  <XAxis dataKey="date" tick={{fontSize:9,fill:C2.sub}} axisLine={false} tickLine={false}/>
+                  <YAxis tick={{fontSize:9,fill:C2.sub}} axisLine={false} tickLine={false} width={40}/>
+                  <Tooltip contentStyle={{background:C2.card,border:`1px solid ${C2.border}`,borderRadius:8,fontSize:11}}/>
+                  <Area type="monotone" dataKey="Required" stroke="#3b82f6" fill="none" strokeWidth={1.5} strokeDasharray="5 4" dot={false}/>
+                  <Area type="monotone" dataKey="Received" stroke="#22c55e" fill="url(#suppGrad)" strokeWidth={2.5} dot={{r:3,fill:'#22c55e'}} activeDot={{r:5}}/>
+                </AreaChart>
+              </ResponsiveContainer>
+            ):<div style={{textAlign:'center',padding:40,color:C2.sub}}>No data yet</div>}
+            {/* WIP summary */}
+            <div style={{marginTop:14,display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:8}}>
+              {allStats.filter(s=>s.totOutw>0||s.totInw>0).map(s=>(
+                <div key={s.id} style={{background:C2.raised,borderRadius:8,padding:'10px 12px'}}>
+                  <div style={{fontSize:11,fontWeight:700,color:C2.text,marginBottom:4}}>{s.name}</div>
+                  <div style={{fontSize:10,color:C2.sub}}>Out: <span style={{color:'#f97316',fontWeight:700}}>{fmtK(s.totOutw)}</span></div>
+                  <div style={{fontSize:10,color:C2.sub}}>In: <span style={{color:'#22c55e',fontWeight:700}}>{fmtK(s.totInw)}</span></div>
+                  <div style={{fontSize:10,color:C2.sub}}>WIP: <span style={{color:'#818cf8',fontWeight:700}}>{fmtK(s.totWip)}</span></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ── BY SUPPLIER VIEW ──────────────────────────────────────────── */}
+        {view==='supplier'&&allStats.map(s=>(
+          <div key={s.id} style={{background:C2.card,border:`1px solid ${statusColor(s.status)}33`,borderRadius:12,padding:'16px',marginBottom:12}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12,flexWrap:'wrap',gap:8}}>
+              <div>
+                <div style={{fontWeight:900,fontSize:15,color:C2.text}}>{s.name}</div>
+                <div style={{fontSize:11,color:C2.sub,marginTop:2}}>
+                  {s.dispPct.toFixed(0)}% dispatched · WIP: {fmtK(s.totWip)} · {fmtK(s.stalled.length)} stalled parts
+                </div>
+              </div>
+              <span style={{background:statusBg(s.status),color:statusColor(s.status),border:`1px solid ${statusColor(s.status)}44`,borderRadius:8,padding:'4px 12px',fontSize:12,fontWeight:800}}>{statusLabel(s.status)}</span>
+            </div>
+            {/* Progress */}
+            <div style={{height:8,background:C2.raised,borderRadius:4,overflow:'hidden',marginBottom:8}}>
+              <div style={{width:`${Math.min(s.dispPct,100)}%`,height:'100%',background:statusColor(s.status),borderRadius:4}}/>
+            </div>
+            {/* Part table */}
+            <div style={{border:`1px solid ${C2.border}`,borderRadius:8,overflow:'hidden'}}>
+              <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr',padding:'5px 10px',background:C2.raised}}>
+                {['Part','Sched','Out','In','WIP','Status'].map(h=>(
+                  <div key={h} style={{fontSize:8,fontWeight:800,color:C2.sub,textTransform:'uppercase'}}>{h}</div>
+                ))}
+              </div>
+              {s.parts.filter(p=>p.schQ>0).map(p=>{
+                const isStalled=p.daysSinceLast>=3&&p.inw<p.schQ;
+                return(
+                  <div key={p.partNo} style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr 1fr',padding:'6px 10px',borderTop:`1px solid ${C2.border}`,background:isStalled?'rgba(239,68,68,0.05)':'transparent',fontSize:10,alignItems:'center'}}>
+                    <div>
+                      <div style={{fontWeight:700,color:C2.text}}>{p.partName||p.partNo}</div>
+                      <div style={{color:C2.sub,fontSize:8}}>{p.partNo}</div>
+                    </div>
+                    <div style={{color:C2.blue,fontWeight:700}}>{fmtK(p.schQ)}</div>
+                    <div style={{color:'#f97316',fontWeight:700}}>{fmtK(p.outw)}</div>
+                    <div style={{color:'#22c55e',fontWeight:700}}>{fmtK(p.inw)}</div>
+                    <div style={{color:'#818cf8',fontWeight:700}}>{fmtK(p.wip)}</div>
+                    <div style={{fontSize:9}}>
+                      {isStalled
+                        ?<span style={{color:'#ef4444',fontWeight:700}}>{p.daysSinceLast>=999?'No inward':'⏸ '+p.daysSinceLast+'d'}</span>
+                        :<span style={{color:'#22c55e',fontWeight:700}}>{p.dispPct.toFixed(0)}%</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+
+      </div>
     </div>
   );
 }

@@ -20,22 +20,21 @@ export const APP_UNITS = [
 export const APP_SCREENS = [
   { id: 'tasks', label: 'Tasks' },
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'ageing', label: 'Ageing Report' },
+  { id: 'customers', label: 'Dispatch' },
+  { id: 'supplier', label: 'Supplier' },
+  { id: 'exec_summary', label: 'Operations' },
+  { id: 'revenue', label: 'Revenue' },
+  { id: 'maintenance', label: 'Maintenance' },
+  { id: 'requests', label: 'Requests' },
+  { id: 'child_parts', label: 'Child Parts' },
+  { id: 'ageing', label: 'Ageing' },
+  { id: 'security', label: 'Security' },
+  { id: 'logistics', label: 'Logistics' },
+  { id: 'admin', label: 'Admin' },
   { id: 'erp', label: 'ERP Dashboard' },
   { id: 'stores', label: 'Stores Dashboard' },
-  { id: 'exec_summary', label: 'Exec Summary' },
-  { id: 'revenue', label: 'Revenue' },
-  { id: 'supplier', label: 'Supplier' },
-  { id: 'requests', label: 'Requests' },
-  { id: 'maintenance', label: 'Maintenance' },
-  { id: 'child_parts', label: 'Child Parts' },
-  { id: 'logistics', label: 'Logistics' },
-  { id: 'customers', label: 'Customers' },
-  { id: 'security', label: 'Security Panel' },
   { id: 'hr', label: 'HR' },
   { id: 'it', label: 'IT' },
-  { id: 'mws', label: 'MWS Dashboard' },
-  { id: 'admin', label: 'Admin Panel' },
 ];
 
 export const FULL_ACCESS_SCREEN_IDS = APP_SCREENS.map((s) => s.id);
@@ -54,6 +53,45 @@ export function autoReportingTo(roleId, unitId) {
   if (unitId === 'u1') return 'JMD 1';
   if (unitId === 'u2') return 'JMD 2';
   return '';
+}
+
+/** MD covers both units and has no reporting line. */
+export function roleNeedsUnit(roleId) {
+  return roleId !== 'md';
+}
+
+export function roleNeedsReportingTo(roleId) {
+  return roleId !== 'md';
+}
+
+/** JMD 1 is always Unit I, JMD 2 always Unit II. MD has no unit. */
+export function unitForAppRole(roleId, selectedUnit = '') {
+  if (roleId === 'md') return '';
+  if (roleId === 'jmd_1') return 'u1';
+  if (roleId === 'jmd_2') return 'u2';
+  return selectedUnit || '';
+}
+
+export function unitLabelForUser(unit, appRole) {
+  if (appRole === 'md') return 'Both units';
+  if (unit === 'u2') return 'Unit II';
+  if (unit === 'u1') return 'Unit I';
+  return unit || '—';
+}
+
+/**
+ * Match logged-in app role to an approval-flow step.
+ * JMD 1 only Unit I (and legacy `jmd`); JMD 2 only Unit II; MD matches every MD step.
+ */
+export function approvalRolesMatch(appRole, stepRole, reqUnit) {
+  if (!appRole || !stepRole) return false;
+  if (appRole === stepRole) return true;
+  if (appRole === 'md' && stepRole === 'md') return true;
+  if (stepRole === 'jmd') {
+    if (appRole === 'jmd_1') return reqUnit !== 'u2';
+    if (appRole === 'jmd_2') return reqUnit === 'u2';
+  }
+  return false;
 }
 
 /**

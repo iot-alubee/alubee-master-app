@@ -7,6 +7,10 @@ import {
   APP_SCREENS,
   autoReportingTo,
   roleHasFullAccess,
+  roleNeedsUnit,
+  roleNeedsReportingTo,
+  unitForAppRole,
+  unitLabelForUser,
   getRoleLabel,
   canAccessScreen,
   suggestFromWorkEmail,
@@ -90,15 +94,21 @@ export default function AdminPanel({ dark = true, onBack }) {
   const needsPageAccess = form.role === 'member_supervisor' || form.role === 'member_employee';
   const reportingLocked = form.role === 'member_supervisor';
   const isEmployee = form.role === 'member_employee';
+  const isMd = form.role === 'md';
+  const isJmd = form.role === 'jmd_1' || form.role === 'jmd_2';
   const isEdit = !!editingId;
 
-  // Member Supervisor → auto JMD by unit
+  // MD: no unit / reporting. JMD 1 → Unit I, JMD 2 → Unit II. Supervisor → JMD by unit.
   useEffect(() => {
     if (!modalOpen) return;
-    if (form.role === 'member_supervisor' && form.unit) {
-      const auto = autoReportingTo(form.role, form.unit);
-      setForm((f) => (f.reportingTo === auto ? f : { ...f, reportingTo: auto }));
-    }
+    setForm((f) => {
+      const unit = unitForAppRole(f.role, f.unit);
+      let reportingTo = f.reportingTo;
+      if (!roleNeedsReportingTo(f.role)) reportingTo = '';
+      else if (f.role === 'member_supervisor' && unit) reportingTo = autoReportingTo(f.role, unit);
+      if (unit === f.unit && reportingTo === f.reportingTo) return f;
+      return { ...f, unit, reportingTo };
+    });
   }, [form.role, form.unit, modalOpen]);
 
   // Full access roles get all screens
@@ -144,11 +154,15 @@ export default function AdminPanel({ dark = true, onBack }) {
     setForm((f) => {
       const next = { ...f, [key]: value };
       if (key === 'unit' || key === 'department' || key === 'role') {
-        if (next.role === 'member_employee') {
+        next.unit = unitForAppRole(next.role, next.unit);
+        if (!roleNeedsReportingTo(next.role)) {
           next.reportingTo = '';
-        }
-        if (next.role === 'member_supervisor' && next.unit) {
+        } else if (next.role === 'member_employee' && key === 'role') {
+          next.reportingTo = '';
+        } else if (next.role === 'member_supervisor' && next.unit) {
           next.reportingTo = autoReportingTo(next.role, next.unit);
+        } else if ((next.role === 'jmd_1' || next.role === 'jmd_2') && !next.reportingTo) {
+          next.reportingTo = 'MD';
         }
       }
       return next;
@@ -177,10 +191,13 @@ export default function AdminPanel({ dark = true, onBack }) {
           ? APP_SCREENS.map((s) => s.id)
           : (sug.pageAccess?.length ? sug.pageAccess : f.pageAccess),
       };
-      if (next.role === 'member_supervisor' && next.unit) {
+      next.unit = unitForAppRole(next.role, next.unit);
+      if (!roleNeedsReportingTo(next.role)) {
+        next.reportingTo = '';
+      } else if (next.role === 'member_supervisor' && next.unit) {
         next.reportingTo = autoReportingTo(next.role, next.unit);
       } else if (roleHasFullAccess(next.role) && !next.reportingTo) {
-        next.reportingTo = next.role === 'md' ? 'Admin' : 'MD';
+        next.reportingTo = 'MD';
       } else if (sug.reportingTo && !f.reportingTo) {
         next.reportingTo = sug.reportingTo;
       }
@@ -248,12 +265,12 @@ export default function AdminPanel({ dark = true, onBack }) {
     setSuccess('');
 
     const required = [
-      ['unit', 'Unit'],
+      ...(roleNeedsUnit(form.role) ? [['unit', 'Unit']] : []),
       ['department', 'Department'],
       ['employeeId', 'Employee ID'],
       ['employeeName', 'Employee Name'],
       ['role', 'Role'],
-      ['reportingTo', 'Reporting to'],
+      ...(roleNeedsReportingTo(form.role) ? [['reportingTo', 'Reporting to']] : []),
       ['mobile', 'Mobile Number'],
     ];
     for (const [key, label] of required) {
@@ -283,12 +300,12 @@ export default function AdminPanel({ dark = true, onBack }) {
     try {
       if (isEdit) {
         await updateAppUser(editingId, {
-          unit: form.unit,
+          unit: unitForAppRole(form.role, form.unit),
           department: form.department,
           employeeId: form.employeeId.trim(),
           employeeName: form.employeeName.trim(),
           role: form.role,
-          reportingTo: form.reportingTo.trim(),
+          reportingTo: roleNeedsReportingTo(form.role) ? form.reportingTo.trim() : '',
           linkedEmail: form.linkedEmail.trim().toLowerCase(),
           pageAccess: form.pageAccess,
           pin: form.pin || undefined,
@@ -298,12 +315,12 @@ export default function AdminPanel({ dark = true, onBack }) {
       } else {
         const createdName = form.employeeName.trim();
         await createAppUser({
-          unit: form.unit,
+          unit: unitForAppRole(form.role, form.unit),
           department: form.department,
           employeeId: form.employeeId.trim(),
           employeeName: createdName,
           role: form.role,
-          reportingTo: form.reportingTo.trim(),
+          reportingTo: roleNeedsReportingTo(form.role) ? form.reportingTo.trim() : '',
           mobile: form.mobile,
           linkedEmail: form.linkedEmail.trim().toLowerCase(),
           pin: form.pin,
@@ -315,12 +332,14 @@ export default function AdminPanel({ dark = true, onBack }) {
         setMapHint('');
         setForm((f) => ({
           ...emptyForm,
-          unit: f.unit,
+          unit: unitForAppRole(f.role, f.unit),
           department: f.department,
           role: f.role,
-          reportingTo: f.role === 'member_supervisor' && f.unit
-            ? autoReportingTo(f.role, f.unit)
-            : '',
+          reportingTo: !roleNeedsReportingTo(f.role)
+            ? ''
+            : f.role === 'member_supervisor' && f.unit
+              ? autoReportingTo(f.role, f.unit)
+              : '',
           pageAccess: roleHasFullAccess(f.role) ? APP_SCREENS.map((s) => s.id) : [],
         }));
         setModalOpen(true);
@@ -405,7 +424,7 @@ export default function AdminPanel({ dark = true, onBack }) {
                   <td style={td(dark)}>
                     <div style={{ fontWeight: 700 }}>{u.name}</div>
                   </td>
-                  <td style={td(dark)}>{u.unit === 'u2' ? 'Unit II' : 'Unit I'}</td>
+                  <td style={td(dark)}>{unitLabelForUser(u.unit, u.appRole)}</td>
                   <td style={td(dark)}>{getDeptLabel(u.dept) || '—'}</td>
                   <td style={td(dark)}>
                     <span style={rolePill}>{getRoleLabel(u.appRole)}</span>
@@ -454,14 +473,40 @@ export default function AdminPanel({ dark = true, onBack }) {
 
             <form onSubmit={handleSubmit} autoComplete="off">
               <div style={formGrid}>
+                <Field label="Role *">
+                  <select style={input(dark)} value={form.role} onChange={(e) => setField('role', e.target.value)} required>
+                    <option value="">Select role</option>
+                    {APP_ROLES.map((r) => (
+                      <option key={r.id} value={r.id}>{r.label}</option>
+                    ))}
+                  </select>
+                </Field>
+
+                {isMd ? (
+                  <div style={{ gridColumn: '1 / -1', ...hint, marginBottom: 4 }}>
+                    MD handles both Unit I and Unit II requests. Unit and Reporting to are not used.
+                  </div>
+                ) : (
                 <Field label="Unit *">
-                  <select style={input(dark)} value={form.unit} onChange={(e) => setField('unit', e.target.value)} required>
+                  <select
+                    style={{ ...input(dark), opacity: isJmd ? 0.85 : 1 }}
+                    value={form.unit}
+                    onChange={(e) => setField('unit', e.target.value)}
+                    required
+                    disabled={isJmd}
+                  >
                     <option value="">Select unit</option>
                     {APP_UNITS.map((u) => (
                       <option key={u.id} value={u.id}>{u.label}</option>
                     ))}
                   </select>
+                  {isJmd && (
+                    <div style={hint}>
+                      {form.role === 'jmd_1' ? 'JMD 1 works in Unit I' : 'JMD 2 works in Unit II'}
+                    </div>
+                  )}
                 </Field>
+                )}
 
                 <Field label="Department *">
                   <select style={input(dark)} value={form.department} onChange={(e) => setField('department', e.target.value)} required>
@@ -496,15 +541,7 @@ export default function AdminPanel({ dark = true, onBack }) {
                   />
                 </Field>
 
-                <Field label="Role *">
-                  <select style={input(dark)} value={form.role} onChange={(e) => setField('role', e.target.value)} required>
-                    <option value="">Select role</option>
-                    {APP_ROLES.map((r) => (
-                      <option key={r.id} value={r.id}>{r.label}</option>
-                    ))}
-                  </select>
-                </Field>
-
+                {!isMd && (
                 <Field label="Reporting to *">
                   {reportingLocked ? (
                     <>
@@ -552,6 +589,7 @@ export default function AdminPanel({ dark = true, onBack }) {
                     </select>
                   )}
                 </Field>
+                )}
 
                 <Field label="Mobile Number *">
                   <input

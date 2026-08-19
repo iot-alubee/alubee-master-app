@@ -17,6 +17,7 @@ import {
 import ITTicketActions from './ITTicketActions';
 import { itTicketStatus } from '../utils/itRequestService';
 import { updateTask } from '../utils/taskService';
+import { approvalRolesMatch } from '../data/appRoles';
 
 // ── Tab definitions ────────────────────────────────────────────────────────────
 const TABS = [
@@ -92,13 +93,8 @@ function requestTypeIcon(t) {
   return '📝';
 }
 
-function ncRolesMatch(appRole, stepRole) {
-  if (!appRole || !stepRole) return false;
-  if (appRole === stepRole) return true;
-  if (appRole === 'jmd_1' && (stepRole === 'jmd' || stepRole === 'jmd_1')) return true;
-  if (appRole === 'jmd_2' && (stepRole === 'jmd' || stepRole === 'jmd_2')) return true;
-  if (appRole === 'md' && stepRole === 'md') return true;
-  return false;
+function ncRolesMatch(appRole, stepRole, reqUnit) {
+  return approvalRolesMatch(appRole, stepRole, reqUnit);
 }
 
 function ncNormalizeFlow(flow) {
@@ -125,14 +121,14 @@ function ncIsUsersTurn(req, userMobile, appRole) {
   const next = ncNextApprover(flow, req.approvals);
   if (!next) return false;
   if (mobilesMatch(next.mobile, userMobile) || mobilesMatch(req.nextApproverMobile, userMobile)) return true;
-  return ncRolesMatch(appRole, next.role);
+  return ncRolesMatch(appRole, next.role, req.unit);
 }
 
 function ncMyStepLabel(req, userMobile, appRole) {
   const steps = ncNormalizeFlow(req?.flow);
   const step =
     steps.find((s) => mobilesMatch(s.mobile, userMobile)) ||
-    steps.find((s) => ncRolesMatch(appRole, s.role));
+    steps.find((s) => ncRolesMatch(appRole, s.role, req.unit));
   return step?.label || appRole || 'Approver';
 }
 
@@ -141,7 +137,7 @@ async function applyRequestDecision(req, { userMobile, userAppRole, action, reje
   const next = ncNextApprover(flow, req.approvals);
   const myStep =
     flow.find((s) => mobilesMatch(s.mobile, userMobile)) ||
-    flow.find((s) => ncRolesMatch(userAppRole, s.role)) ||
+    flow.find((s) => ncRolesMatch(userAppRole, s.role, req.unit)) ||
     next;
   const stepRole = myStep?.role || userAppRole || 'jmd_1';
   const updApprovals = {

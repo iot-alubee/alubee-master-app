@@ -6,6 +6,7 @@ import {
   onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { approvalRolesMatch } from '../data/appRoles';
 
 /**
  * New request data lives in NEW docs under working_days_config
@@ -31,13 +32,8 @@ export function mobilesMatch(a, b) {
   return !!x && !!y && x === y && x.length === 10;
 }
 
-function rolesMatchForApproval(appRole, stepRole) {
-  if (!appRole || !stepRole) return false;
-  if (appRole === stepRole) return true;
-  if (appRole === 'jmd_1' && (stepRole === 'jmd' || stepRole === 'jmd_1')) return true;
-  if (appRole === 'jmd_2' && (stepRole === 'jmd' || stepRole === 'jmd_2')) return true;
-  if (appRole === 'md' && stepRole === 'md') return true;
-  return false;
+function rolesMatchForApproval(appRole, stepRole, reqUnit) {
+  return approvalRolesMatch(appRole, stepRole, reqUnit);
 }
 
 /** True when this request is waiting on the logged-in user to approve. */
@@ -52,7 +48,7 @@ export function isRequestPendingForUser(req, userMobile, userAppRole) {
   const next = flow.find((st) => st?.role && !req.approvals?.[st.role]?.status);
   if (!next) return false;
   if (mobilesMatch(next.mobile, userMobile) || mobilesMatch(req.nextApproverMobile, userMobile)) return true;
-  return rolesMatchForApproval(userAppRole, next.role);
+  return rolesMatchForApproval(userAppRole, next.role, req.unit);
 }
 
 export function getProfileMobile(profile) {
@@ -207,8 +203,7 @@ export function notifIsForUser(n, userMobile, userAppRole) {
   const role = String(userAppRole || '');
   const targetRole = String(n.targetRole || '');
   if (!targetRole || !role) return false;
-  if (targetRole === role) return true;
-  if (targetRole === 'jmd' && (role === 'jmd_1' || role === 'jmd_2')) return true;
+  if (approvalRolesMatch(role, targetRole, n.unit)) return true;
   return false;
 }
 

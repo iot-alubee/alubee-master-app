@@ -43,7 +43,6 @@ import StoresDashboard from './StoresDashboard';
 import ExecutiveSummary from './ExecutiveSummary';
 import ChildPartsDashboard from './ChildPartsDashboard';
 import MigrateU2Data from './MigrateU2Data';
-import MWSDashboard from './MWSDashboard';
 import SecurityDashboard from './SecurityDashboard';
 import AlubeaAssistant from '../components/AlubeaAssistant';
 import RevenueDashboard from './RevenueDashboard';
@@ -753,7 +752,6 @@ function DashboardInner({dark,setDark}) {
   const [pdfContent,    setPDFContent]    = useState('');
   const [showChildParts, setShowChildParts] = useState(false);
   const [showU2Migrate,  setShowU2Migrate]  = useState(false);
-  const [showMWS,        setShowMWS]        = useState(false);
   const [showSecurity,   setShowSecurity]   = useState(false);
   const [showManpower,   setShowManpower]   = useState(false);
   const [showRevenue,    setShowRevenue]    = useState(false);
@@ -909,6 +907,10 @@ function DashboardInner({dark,setDark}) {
     return () => unsub && unsub();
   }, [myMobile, myAppRole]);
   const bellCount = pendingApprovalCount;
+  const pendingAckCount = useMemo(
+    () => notifs.filter((n) => n.pendingApproval && !n.acknowledged).length,
+    [notifs]
+  );
 
   const ownerList=useMemo(()=>[...new Set(tasks.map(t=>getTaskOwner(t)).filter(x=>x&&x!=='—'))].sort(),[tasks]);
   const raisedByList=useMemo(()=>[...new Set(tasks.map(t=>t.raisedByName).filter(Boolean))].sort(),[tasks]);
@@ -989,7 +991,6 @@ function DashboardInner({dark,setDark}) {
   if(showERP)    return <ERPDashboard   dark={dark} onBack={()=>setShowERP(false)}    unit={unit}/> ;
   if(showStores) return <StoresDashboard dark={dark} onBack={()=>setShowStores(false)} unit={unit}/> ;
   if(showExecSummary)  return <ExecutiveSummary dark={dark} onBack={()=>setShowExecSummary(false)} unit={unit}/>;
-  if(showMWS)          return <MWSDashboard dark={dark} onBack={()=>setShowMWS(false)} unit={unit}/>;
   if(showManpower)     return <ManpowerDashboard dark={dark} onBack={()=>setShowManpower(false)}/>;
   if(showRevenue)      return <RevenueDashboard dark={dark} onBack={()=>setShowRevenue(false)} unit={unit}/> ;
   if(showSupplier)     return <SupplierDashboard userRole={userProfile?.role} userDept={userProfile?.dept} userProfile={userProfile} unit={unit} onBack={()=>setShowSupplier(false)}/>;
@@ -1040,24 +1041,23 @@ function DashboardInner({dark,setDark}) {
 
         <nav style={{display:'flex',flexDirection:'column',gap:3,marginBottom:14}}>
           {canScreen('tasks')&&<button style={navBtn(activeTab==='tasks'&&!showAdmin)} onClick={()=>{leaveAdmin();setActiveTab('tasks');if(isMobile)setSidebarOpen(false);}}>📋 Tasks</button>}
-          {canScreen('dashboard')&&<button style={navBtn(activeTab==='dashboard'&&!showAdmin)} onClick={()=>{leaveAdmin();setActiveTab('dashboard');if(isMobile)setSidebarOpen(false);}}>📊 Dashboard</button>}
-          {canScreen('ageing')&&<button style={navBtn(showAgeing)} onClick={()=>openScreen(setShowAgeing)}>📈 Ageing Report</button>}
+          {canScreen('dashboard')&&<button style={navBtn(activeTab==='dashboard'&&!showAdmin)} onClick={()=>{leaveAdmin();setActiveTab('dashboard');if(isMobile)setSidebarOpen(false);}}>🏠 Dashboard</button>}
+          {canScreen('customers')&&<button style={navBtn(showCustomer)} onClick={()=>openScreen(setShowCustomer)}>🚚 Dispatch</button>}
+          {roleHasFullAccess(userProfile?.appRole)&&<button style={navBtn(false)} onClick={()=>openScreen(setShowU2Migrate)}>🔄 U2 Setup</button>}
+          {canScreen('supplier')&&<button style={navBtn(showSupplier)} onClick={()=>openScreen(setShowSupplier)}>📦 Supplier</button>}
+          {canScreen('exec_summary')&&<button style={navBtn(showExecSummary)} onClick={()=>openScreen(setShowExecSummary)}>📊 Operations</button>}
+          {canScreen('revenue')&&<button style={navBtn(showRevenue)} onClick={()=>openScreen(setShowRevenue)}>💰 Revenue</button>}
+          {canScreen('maintenance')&&<button style={navBtn(showMaintenance)} onClick={()=>openScreen(setShowMaintenance)}>🔧 Maintenance</button>}
+          {canScreen('requests')&&<button style={navBtn(showRequests)} onClick={()=>openScreen(setShowRequests)}>📝 Requests</button>}
+          {canScreen('child_parts')&&<button style={navBtn(showChildParts)} onClick={()=>openScreen(setShowChildParts)}>🔩 Child Parts</button>}
+          {canScreen('ageing')&&<button style={navBtn(showAgeing)} onClick={()=>openScreen(setShowAgeing)}>📅 Ageing</button>}
+          {canScreen('security')&&<button style={navBtn(showSecurity)} onClick={()=>openScreen(setShowSecurity)}>🔒 Security</button>}
+          {canScreen('logistics')&&<button style={navBtn(showLogistics)} onClick={()=>openScreen(setShowLogistics)}>🚛 Logistics</button>}
+          {canScreen('admin')&&<button style={navBtn(showAdmin)} onClick={()=>{setShowAdmin(true);setSidebarOpen(false);}}>⚙️ Admin</button>}
           {canScreen('erp')&&<button style={navBtn(showERP)} onClick={()=>openScreen(setShowERP)}>🗂 ERP Dashboard</button>}
           {canScreen('stores')&&<button style={navBtn(showStores)} onClick={()=>openScreen(setShowStores)}>🏪 Stores Dashboard</button>}
-          {canScreen('exec_summary')&&<button style={navBtn(showExecSummary)} onClick={()=>openScreen(setShowExecSummary)}>📊 Exec Summary</button>}
-          {canScreen('revenue')&&<button style={navBtn(showRevenue)} onClick={()=>openScreen(setShowRevenue)}>📈 Revenue</button>}
-          {canScreen('supplier')&&<button style={navBtn(showSupplier)} onClick={()=>openScreen(setShowSupplier)}>📦 Supplier</button>}
-          {canScreen('requests')&&<button style={navBtn(showRequests)} onClick={()=>openScreen(setShowRequests)}>📝 Requests</button>}
-          {canScreen('maintenance')&&<button style={navBtn(showMaintenance)} onClick={()=>openScreen(setShowMaintenance)}>🔧 Maintenance</button>}
-          {canScreen('child_parts')&&<button style={navBtn(showChildParts)} onClick={()=>openScreen(setShowChildParts)}>🔩 Child Parts</button>}
-          {roleHasFullAccess(userProfile?.appRole)&&<button style={navBtn(false)} onClick={()=>openScreen(setShowU2Migrate)}>🔄 U2 Setup</button>}
-          {canScreen('logistics')&&<button style={navBtn(showLogistics)} onClick={()=>openScreen(setShowLogistics)}>🚛 Logistics</button>}
           {canScreen('hr')&&<button style={navBtn(showHR)} onClick={()=>openScreen(setShowHR)}>👔 HR</button>}
           {canScreen('it')&&<button style={navBtn(showIT)} onClick={()=>openScreen(setShowIT)}>💻 IT</button>}
-          {canScreen('customers')&&<button style={navBtn(showCustomer)} onClick={()=>openScreen(setShowCustomer)}>📊 Customers</button>}
-          {canScreen('mws')&&<button style={navBtn(showMWS)} onClick={()=>openScreen(setShowMWS)}>🏭 MWS</button>}
-          {canScreen('security')&&<button style={navBtn(showSecurity)} onClick={()=>openScreen(setShowSecurity)}>🔒 Security Panel</button>}
-          {canScreen('admin')&&<button style={navBtn(showAdmin)} onClick={()=>{setShowAdmin(true);setSidebarOpen(false);}}>🛠 Admin Panel</button>}
         </nav>
 
         {!isOwner&&(
@@ -1114,6 +1114,7 @@ function DashboardInner({dark,setDark}) {
             <button onClick={()=>setShowNotifs(x=>!x)} style={{position:'relative',background:'var(--glass-1)',border:'1px solid var(--border-subtle)',borderRadius:'var(--radius-sm)',color:'var(--text-primary)',fontSize:18,cursor:'pointer',padding:'6px 8px',transition:'all var(--t-fast)'}}>
               🔔
               {bellCount>0&&<span style={{position:'absolute',top:0,right:0,background:'#ef4444',color:'#fff',borderRadius:'50%',width:14,height:14,fontSize:8,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center'}}>{bellCount>9?'9+':bellCount}</span>}
+              {pendingAckCount>0&&<span style={{position:'absolute',bottom:0,right:0,background:'#f59e0b',color:'#fff',borderRadius:'50%',width:12,height:12,fontSize:8,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center'}}>{pendingAckCount}</span>}
             </button>
             <button style={{background:'linear-gradient(135deg,#f97316,#ea580c)',border:'none',borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',fontFamily:'inherit',whiteSpace:'nowrap'}} onClick={()=>{setEditTask(null);setShowModal(true);}}>+ Task</button>
           </div>
@@ -1140,6 +1141,7 @@ function DashboardInner({dark,setDark}) {
               style={{position:'relative',background:showNotifs?'rgba(249,115,22,0.2)':CARD,border:`1px solid ${BDR}`,borderRadius:12,padding:'10px 14px',cursor:'pointer',fontSize:18,lineHeight:1}}>
               🔔
               {bellCount>0&&<span style={{position:'absolute',top:4,right:4,background:'#ef4444',color:'#fff',borderRadius:'50%',width:16,height:16,fontSize:9,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center'}}>{bellCount>9?'9+':bellCount}</span>}
+              {pendingAckCount>0&&<span style={{position:'absolute',bottom:4,right:4,background:'#f59e0b',color:'#fff',borderRadius:'50%',width:12,height:12,fontSize:8,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center'}}>{pendingAckCount}</span>}
             </button>
             <button style={{background:'linear-gradient(135deg,#f97316,#ea580c)',border:'none',borderRadius:12,padding:'11px 18px',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer',fontFamily:'inherit',boxShadow:'0 4px 12px rgba(249,115,22,0.35)',whiteSpace:'nowrap'}}
               onClick={()=>{setEditTask(null);setShowModal(true);}}>+ New Task</button>
@@ -1154,6 +1156,7 @@ function DashboardInner({dark,setDark}) {
             {label:'On Hold',value:stats.onHold,color:'#ea580c',bg:dark?'#2d1a05':'#fff7ed'},
             {label:'Closed',value:stats.closed,color:'#16a34a',bg:dark?'#052d14':'#f0fdf4'},
             {label:'Overdue 3d+',value:stats.overdue,color:'#dc2626',bg:dark?'#2d1515':'#fef2f2'},
+            ...(pendingAckCount>0?[{label:'Pending Ack',value:pendingAckCount,color:'#d97706',bg:dark?'#2d2005':'#fffbeb'}]:[]),
           ].map(k=>(
             <div key={k.label} style={{borderRadius:10,padding:isMobile?'10px 10px':'14px 16px',background:k.bg}}>
               <div style={{fontSize:isMobile?20:26,fontWeight:800,lineHeight:1,color:k.color}}>{k.value}</div>

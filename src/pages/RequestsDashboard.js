@@ -25,6 +25,7 @@ import {
 } from '../utils/requestService';
 import ITTicketActions from '../components/ITTicketActions';
 import { IT_CATEGORIES, findITSupervisor, itTicketStatus, isITSupervisorFor, isITAssignee, isITRequester } from '../utils/itRequestService';
+import { approvalRolesMatch } from '../data/appRoles';
 
 // ── Availability helpers ──────────────────────────────────────────────────────
 async function getAvailability(db_inst, collection_fn, doc_fn, getDoc_fn) {
@@ -409,13 +410,8 @@ function emailsMatch(a, b) {
   return !!a && !!b && String(a).toLowerCase() === String(b).toLowerCase();
 }
 
-function rolesMatch(appRole, stepRole) {
-  if (!appRole || !stepRole) return false;
-  if (appRole === stepRole) return true;
-  if (appRole === 'jmd_1' && (stepRole === 'jmd' || stepRole === 'jmd_1')) return true;
-  if (appRole === 'jmd_2' && (stepRole === 'jmd' || stepRole === 'jmd_2')) return true;
-  if (appRole === 'md' && stepRole === 'md') return true;
-  return false;
+function rolesMatch(appRole, stepRole, reqUnit) {
+  return approvalRolesMatch(appRole, stepRole, reqUnit);
 }
 
 /** True when this logged-in user must Approve/Reject now (mobile-first) */
@@ -430,7 +426,7 @@ function isUsersTurn(req, userMobile, appRole, userEmail) {
   if (!next) return false;
   if (mobilesMatch(next.mobile, userMobile)) return true;
   if (mobilesMatch(req.nextApproverMobile, userMobile)) return true;
-  if (rolesMatch(appRole, next.role)) return true;
+  if (rolesMatch(appRole, next.role, req.unit)) return true;
   if (emailsMatch(next.email, userEmail)) return true;
   if (emailsMatch(req.nextApproverEmail, userEmail)) return true;
   return false;
@@ -444,7 +440,7 @@ function buildApprovalUpdate(req, userMobile, appRole, action, rejectReason = ''
   const next = getNextApprover(steps, req.approvals);
   const myStep =
     steps.find((s) => mobilesMatch(s.mobile, userMobile)) ||
-    steps.find((s) => rolesMatch(appRole, s.role)) ||
+    steps.find((s) => rolesMatch(appRole, s.role, req.unit)) ||
     steps.find((s) => emailsMatch(s.email, userEmail)) ||
     next;
   const stepRole = myStep?.role || appRole || 'jmd_1';
@@ -496,7 +492,7 @@ function myStepLabel(req, userMobile, appRole, userEmail) {
   const steps = normalizeFlowSteps(req?.flow);
   const step =
     steps.find((s) => mobilesMatch(s.mobile, userMobile)) ||
-    steps.find((s) => rolesMatch(appRole, s.role)) ||
+    steps.find((s) => rolesMatch(appRole, s.role, req.unit)) ||
     steps.find((s) => emailsMatch(s.email, userEmail));
   return step?.label || appRole || 'Approver';
 }

@@ -29,6 +29,9 @@ import {
   FULL_ACCESS_SCREEN_IDS,
   toLegacyRole,
   autoReportingTo,
+  unitForAppRole,
+  roleNeedsUnit,
+  roleNeedsReportingTo,
   pinToAuthPassword,
   isValidPin,
   SEEDED_USERS,
@@ -139,7 +142,7 @@ export function profileFromDoc(id, data) {
     employeeId: data.employeeId || '',
     employeeName: data.employeeName || data.name || '',
     mobile: data.mobile || '',
-    unit: data.unit || 'u1',
+    unit: appRole === 'md' ? '' : (unitForAppRole(appRole, data.unit) || data.unit || 'u1'),
     dept: data.department || data.dept || null,
     department: data.department || data.dept || null,
     appRole,
@@ -403,10 +406,13 @@ export async function createAppUser(payload) {
   }
   const pin = String(payload.pin || payload.password).replace(/\D/g, '');
 
-  const required = ['unit', 'department', 'employeeId', 'employeeName', 'role'];
+  const role = payload.role;
+  const unit = unitForAppRole(role, payload.unit);
+  const required = ['department', 'employeeId', 'employeeName', 'role'];
   for (const key of required) {
     if (!payload[key]) throw new Error(`${key} is required`);
   }
+  if (roleNeedsUnit(role) && !unit) throw new Error('unit is required');
 
   const existing = await getUserByMobile(mobile);
   if (existing && existing.active !== false) {
@@ -415,12 +421,11 @@ export async function createAppUser(payload) {
 
   const authEmail = mobileToAuthEmail(mobile);
   const authPassword = pinToAuthPassword(mobile, pin);
-  const reportingTo =
-    payload.reportingTo ||
-    autoReportingTo(payload.role, payload.unit) ||
-    '';
+  const reportingTo = roleNeedsReportingTo(role)
+    ? (payload.reportingTo || autoReportingTo(role, unit) || '')
+    : '';
 
-  if (!reportingTo) throw new Error('Reporting to is required');
+  if (roleNeedsReportingTo(role) && !reportingTo) throw new Error('Reporting to is required');
 
   const linkedEmail = String(payload.linkedEmail || '').trim().toLowerCase();
   const fromLinked =
@@ -453,11 +458,11 @@ export async function createAppUser(payload) {
 
     const docId = `u_${mobile}`;
     const record = {
-      unit: payload.unit,
+      unit,
       department: payload.department,
       employeeId: String(payload.employeeId).trim(),
       employeeName: String(payload.employeeName).trim(),
-      role: payload.role,
+      role,
       reportingTo,
       mobile,
       linkedEmail,
@@ -527,20 +532,20 @@ export async function updateAppUser(userId, payload) {
     };
   }
 
-  const unit = payload.unit || existing.unit;
+  const role = payload.role || existing.role;
+  const unit = unitForAppRole(role, payload.unit !== undefined ? payload.unit : existing.unit);
   const department = payload.department || existing.department;
   const employeeId = String(payload.employeeId ?? existing.employeeId).trim();
   const employeeName = String(payload.employeeName ?? existing.employeeName).trim();
-  const role = payload.role || existing.role;
-  const reportingTo =
-    payload.reportingTo ||
-    autoReportingTo(role, unit) ||
-    existing.reportingTo ||
-    '';
+  const reportingTo = roleNeedsReportingTo(role)
+    ? (payload.reportingTo || autoReportingTo(role, unit) || existing.reportingTo || '')
+    : '';
 
-  if (!unit || !department || !employeeId || !employeeName || !role || !reportingTo) {
+  if (!department || !employeeId || !employeeName || !role) {
     throw new Error('All fields are mandatory');
   }
+  if (roleNeedsUnit(role) && !unit) throw new Error('Unit is required');
+  if (roleNeedsReportingTo(role) && !reportingTo) throw new Error('Reporting to is required');
 
   const pageAccess = roleHasFullAccess(role)
     ? FULL_ACCESS_SCREEN_IDS

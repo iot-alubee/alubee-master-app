@@ -283,12 +283,18 @@ export function notifAllowedByPrefs(n, prefs) {
   return true;
 }
 
-function nameMatches(personName, candidate) {
-  const me = String(personName || '').trim().toLowerCase();
-  const val = String(candidate || '').trim().toLowerCase();
-  if (!me || !val) return false;
-  return val === me || val.includes(me) || me.includes(val);
+function namesEqual(personName, candidate) {
+  const me = String(personName || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const val = String(candidate || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  return !!me && !!val && me === val;
 }
+
+const FACTORY_BROADCAST_TYPES = new Set([
+  'vehicle', 'overstay', 'internal', 'transfer', 'power', 'mobilebox',
+  'manpower', 'erp', 'stores', 'stores_checklist', 'stores_alloy', 'stores_transfer',
+  'revenue', 'customer_dispatch', 'customer_schedule', 'bins_shortage',
+  'supplier_inward', 'supplier_rag', 'tea', 'dc',
+]);
 
 function isPersonalNotif(n, user) {
   if (!n || !user) return false;
@@ -296,17 +302,24 @@ function isPersonalNotif(n, user) {
   const appRole = user.appRole || '';
   const userId = user.id || '';
   const name = user.name || user.employeeName || '';
+  const type = String(n.type || '');
 
   if (notifIsForUser(n, mobile, appRole)) return true;
   if (mobilesMatch(n.employeeMobile, mobile) || mobilesMatch(n.assignedToMobile, mobile)) return true;
   if (userId && (n.assignedPersonId === userId || n.assignedToPersonId === userId || n.raisedById === userId)) {
     return true;
   }
+
+  // Factory-wide security / ops alerts are for MD and JMD only.
+  if (FACTORY_BROADCAST_TYPES.has(type) || (n.screen === 'security' && type !== 'request' && type !== 'permission' && type !== 'visitor')) {
+    return namesEqual(name, n.employeeName) || namesEqual(name, n.alubeanToMeet) || namesEqual(name, n.employeeToMeet);
+  }
+
   if (
-    nameMatches(name, n.assignedTo) ||
-    nameMatches(name, n.assignedToPersonName) ||
-    nameMatches(name, n.assignedToName) ||
-    nameMatches(name, n.targetName)
+    namesEqual(name, n.assignedTo) ||
+    namesEqual(name, n.assignedToPersonName) ||
+    namesEqual(name, n.assignedToName) ||
+    namesEqual(name, n.targetName)
   ) {
     return true;
   }
@@ -314,14 +327,13 @@ function isPersonalNotif(n, user) {
     'task_assigned', 'task_completed', 'task_updated', 'task_cancelled',
     'task_deleted', 'task_overdue', 'task_reopened', 'delete_requested',
   ];
-  if (taskTypes.includes(n.type) && (nameMatches(name, n.raisedBy) || nameMatches(name, n.raisedByName))) {
+  if (taskTypes.includes(type) && (namesEqual(name, n.raisedBy) || namesEqual(name, n.raisedByName))) {
     return true;
   }
-  const personalSecurity = ['permission', 'visitor', 'dc', 'tea'];
-  if (personalSecurity.includes(n.type) && (
-    nameMatches(name, n.alubeanToMeet) ||
-    nameMatches(name, n.employeeToMeet) ||
-    nameMatches(name, n.employeeName)
+  if ((type === 'permission' || type === 'visitor') && (
+    namesEqual(name, n.alubeanToMeet) ||
+    namesEqual(name, n.employeeToMeet) ||
+    namesEqual(name, n.employeeName)
   )) {
     return true;
   }
@@ -344,6 +356,9 @@ export function notifVisibleToUser(n, user, prefs) {
 
   if (isRequest) {
     return notifIsForUser(n, getProfileMobile(user) || user.mobile, appRole);
+  }
+  if (FACTORY_BROADCAST_TYPES.has(String(n.type || ''))) {
+    return isPersonalNotif(n, user);
   }
   return isPersonalNotif(n, user);
 }

@@ -17,7 +17,7 @@ import ITTicketActions from './ITTicketActions';
 import { itTicketStatus } from '../utils/itRequestService';
 import { updateTask } from '../utils/taskService';
 import { approvalRolesMatch } from '../data/appRoles';
-import { notifVisibleToUser } from '../utils/settingsService';
+import { notifVisibleToUser, isBroadcastNotifRole } from '../utils/settingsService';
 
 // ── Tab definitions ────────────────────────────────────────────────────────────
 const TABS = [
@@ -907,6 +907,8 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
   const [detail, setDetail] = useState(null); // { notif, req, loading }
   const [pendingReqCount, setPendingReqCount] = useState(0);
 
+  const leadership = isBroadcastNotifRole(userAppRole);
+  const hideFactoryFeed = isolateLegacy || !leadership;
   const bdr = 'var(--border-subtle)';
   const txt = 'var(--text-primary)';
   const sub = 'var(--text-secondary)';
@@ -1079,7 +1081,7 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
 
         {/* Tabs */}
         <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:2}}>
-          {TABS.map(t=>{
+          {(hideFactoryFeed ? TABS.filter((t) => t.id !== 'security') : TABS).map(t=>{
             const cnt = tabCount(t.id);
             const active = tab===t.id;
             return (
@@ -1109,7 +1111,7 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
         <div style={{ display: tab === 'approvals' ? 'block' : 'none' }}>
           <PendingRequests unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub} userMobile={userMobile} userAppRole={userAppRole} userProfile={userProfile} onOpen={openDetail} onCount={setPendingReqCount}/>
         </div>
-        {tab==='security' && !isolateLegacy && (
+        {tab==='security' && !hideFactoryFeed && (
           <>
             <PendingDCs unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub}/>
             <PendingVisitors unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub}/>

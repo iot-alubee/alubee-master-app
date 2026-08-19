@@ -1,10 +1,11 @@
 // Push: save token for tasks (fcm_tokens) + requests (alubee_app_fcm_tokens).
 // Native Android uses Capacitor FCM. iPhone home-screen / web uses Firebase web push.
 
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import app, { db, getWebPushVapidKey } from '../firebase';
 import { normalizeAppMobile, getProfileMobile } from './requestService';
 import { storePendingNotifTap, resolveNotifDestination } from './mobileApp';
+import { isBroadcastNotifRole } from './settingsService';
 
 const FCM_COL = 'fcm_tokens';
 const FCM_BACKUP_DOC = 'alubee_app_fcm_tokens';
@@ -48,6 +49,32 @@ function dispatchNotifTap(intent) {
   window.dispatchEvent(new CustomEvent('alubee_notification_tap', { detail: intent }));
 }
 
+async function stripTokenFromFcmDoc(ref, tokenValue) {
+  try {
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return;
+    const prev = snap.data() || {};
+    const leftover = [...new Set([...(prev.tokens || []), prev.token, prev.webToken, prev.androidToken].filter(Boolean))]
+      .filter((t) => t !== tokenValue);
+    if (!leftover.length) {
+      await deleteDoc(ref);
+      return;
+    }
+    await setDoc(ref, {
+      ...prev,
+      tokens: leftover,
+      token: leftover[0] || '',
+      webToken: prev.webToken === tokenValue ? '' : (prev.webToken || ''),
+      androidToken: prev.androidToken === tokenValue ? '' : (prev.androidToken || ''),
+      role: prev.appRole && prev.appRole !== 'md' && prev.appRole !== 'jmd_1' && prev.appRole !== 'jmd_2'
+        ? prev.appRole
+        : (prev.role === 'owner' ? 'member' : prev.role),
+    }, { merge: true });
+  } catch (err) {
+    console.warn('strip fcm_tokens failed', err?.code || err?.message);
+  }
+}
+
 async function saveTokenForUser(tokenValue, userProfile) {
   const profile = userProfile || currentProfile;
   if (!profile || !tokenValue) return;
@@ -55,14 +82,17 @@ async function saveTokenForUser(tokenValue, userProfile) {
   const userId = profile?.id || mobile || 'unknown';
   const workEmail = String(profile?.linkedEmail || profile?.email || profile?.authEmail || '').toLowerCase();
   const platform = isNative ? 'android' : 'web';
+  const appRole = profile?.appRole || '';
+  const leadership = isBroadcastNotifRole(appRole);
   const base = {
     userId,
     userName: profile?.name || profile?.employeeName || '',
     mobile: mobile || '',
     email: workEmail,
     linkedEmail: workEmail,
-    appRole: profile?.appRole || '',
-    role: profile?.role || profile?.appRole || 'member',
+    appRole,
+    // Old Cloud Functions blast everyone with role "owner". Only MD/JMD keep that.
+    role: leadership ? 'owner' : (appRole || 'member'),
     unit: profile?.unit || 'u1',
     dept: profile?.dept || profile?.department || '',
     platform,
@@ -84,27 +114,37 @@ async function saveTokenForUser(tokenValue, userProfile) {
   }
 
   let saved = false;
-  if (mobile) {
-    try {
-      await mergeInto(doc(db, FCM_COL, mobile));
-      saved = true;
-    } catch (err) {
-      console.warn('fcm_tokens mobile save failed', err?.code || err?.message);
+
+  if (leadership) {
+    if (mobile) {
+      try {
+        await mergeInto(doc(db, FCM_COL, mobile));
+        saved = true;
+      } catch (err) {
+        console.warn('fcm_tokens mobile save failed', err?.code || err?.message);
+      }
     }
-  }
-  if (userId && userId !== mobile) {
-    try {
-      await mergeInto(doc(db, FCM_COL, String(userId)));
-      saved = true;
-    } catch (err) {
-      console.warn('fcm_tokens userId save failed', err?.code || err?.message);
+    if (userId && userId !== mobile) {
+      try {
+        await mergeInto(doc(db, FCM_COL, String(userId)));
+        saved = true;
+      } catch (err) {
+        console.warn('fcm_tokens userId save failed', err?.code || err?.message);
+      }
     }
-  }
-  if (workEmail && workEmail.includes('@') && !workEmail.endsWith('@mobile.alubee.com')) {
-    try {
-      await mergeInto(doc(db, FCM_COL, workEmail.replace(/[@.]/g, '_')));
-      saved = true;
-    } catch (_) {}
+    if (workEmail && workEmail.includes('@') && !workEmail.endsWith('@mobile.alubee.com')) {
+      try {
+        await mergeInto(doc(db, FCM_COL, workEmail.replace(/[@.]/g, '_')));
+        saved = true;
+      } catch (_) {}
+    }
+  } else {
+    // Pull this device off the old owner blast list.
+    if (mobile) await stripTokenFromFcmDoc(doc(db, FCM_COL, mobile), tokenValue);
+    if (userId && userId !== mobile) await stripTokenFromFcmDoc(doc(db, FCM_COL, String(userId)), tokenValue);
+    if (workEmail && workEmail.includes('@') && !workEmail.endsWith('@mobile.alubee.com')) {
+      await stripTokenFromFcmDoc(doc(db, FCM_COL, workEmail.replace(/[@.]/g, '_')), tokenValue);
+    }
   }
 
   if (mobile) {

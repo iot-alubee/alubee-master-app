@@ -1,6 +1,6 @@
 
 // ── Soft update check (do NOT reload on every Excel/tab focus) ─────────────────
-const APP_VERSION = '116';
+const APP_VERSION = '117';
 let _versionCheckBusy = false;
 async function checkVersion() {
   if (_versionCheckBusy) return;
@@ -56,7 +56,7 @@ import SettingsPage from './SettingsPage';
 import HRDashboard from './HRDashboard';
 import ITDashboard from './ITDashboard';
 import { canAccessScreen, getRoleLabel, roleHasFullAccess } from '../data/appRoles';
-import { canAccessSettings, subscribeNotifPrefs, filterNotifsForUser } from '../utils/settingsService';
+import { canAccessSettings, subscribeNotifPrefs, filterNotifsForUser, isBroadcastNotifRole } from '../utils/settingsService';
 import { isAndroidApp } from '../utils/phoneNumbers';
 import { consumePendingNotifTap, resolveNotifDestination } from '../utils/mobileApp';
 import {
@@ -1064,7 +1064,7 @@ function DashboardInner({dark,setDark}) {
   if(showRequests)     return (
     <>
       <RequestsDashboard userProfile={userProfile} dark={dark} initialView={requestView} initialRequestId={openNotifRequestId} onBack={()=>{setShowRequests(false);setOpenNotifRequestId(null);}}/>
-      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif}
+      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif} isolateLegacy={!isBroadcastNotifRole(userProfile?.appRole)}
         onOpenTask={(taskId)=>{
           setShowNotifs(false);
           setShowRequests(false);
@@ -1443,7 +1443,7 @@ function DashboardInner({dark,setDark}) {
         </div>
       )}
 
-      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif}
+      {showNotifs&&<NotificationCenter unit={unit} dark={dark} onClose={()=>{setShowNotifs(false);setOpenNotifRequestId(null);}} notifs={notifs} userEmail={userProfile?.email || userProfile?.authEmail || userProfile?.linkedEmail} userMobile={getProfileMobile(userProfile)} userAppRole={userProfile?.appRole} userProfile={userProfile} initialRequestId={openNotifRequestId} onOpenRequest={openRequestFromNotif} isolateLegacy={!isBroadcastNotifRole(userProfile?.appRole)}
         onOpenTask={(taskId)=>{
           setActiveTab('tasks');
           setSearch('');

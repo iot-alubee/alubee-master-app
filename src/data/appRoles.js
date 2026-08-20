@@ -24,6 +24,7 @@ export const APP_SCREENS = [
   { id: 'supplier', label: 'Supplier' },
   { id: 'exec_summary', label: 'Operations' },
   { id: 'revenue', label: 'Revenue' },
+  { id: 'performance', label: 'Performance' },
   { id: 'maintenance', label: 'Maintenance' },
   { id: 'requests', label: 'Requests' },
   { id: 'child_parts', label: 'Child Parts' },

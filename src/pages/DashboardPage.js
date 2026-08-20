@@ -1,6 +1,6 @@
 
 // ── Soft update check (do NOT reload on every Excel/tab focus) ─────────────────
-const APP_VERSION = '118';
+const APP_VERSION = '119';
 let _versionCheckBusy = false;
 async function checkVersion() {
   if (_versionCheckBusy) return;
@@ -41,6 +41,7 @@ import AgeingScreen from './AgeingScreen';
 import ERPDashboard from './ERPDashboard';
 import StoresDashboard from './StoresDashboard';
 import ExecutiveSummary from './ExecutiveSummary';
+import ExecReport from './ExecReport';
 import ChildPartsDashboard from './ChildPartsDashboard';
 import MigrateU2Data from './MigrateU2Data';
 import SecurityDashboard from './SecurityDashboard';
@@ -751,6 +752,7 @@ function DashboardInner({dark,setDark}) {
   const [showERP,       setShowERP]       = useState(false);
   const [showStores,    setShowStores]    = useState(false);
   const [showExecSummary, setShowExecSummary] = useState(false);
+  const [showExecReport,  setShowExecReport]  = useState(false);
   const [showPDF,       setShowPDF]       = useState(false);
   const [pdfContent,    setPDFContent]    = useState('');
   const [showChildParts, setShowChildParts] = useState(false);
@@ -816,7 +818,7 @@ function DashboardInner({dark,setDark}) {
 
   useEffect(()=>{
     function resetModules() {
-      setShowSecurity(false); setShowExecSummary(false);
+      setShowSecurity(false); setShowExecSummary(false); setShowExecReport(false);
       setShowERP(false); setShowStores(false); setShowManpower(false);
       setShowAgeing(false); setShowAdmin(false); setShowSettings(false);
       setShowIT(false); setShowHR(false);
@@ -869,6 +871,7 @@ function DashboardInner({dark,setDark}) {
       if (screen === 'erp') { setTimeout(()=>setShowERP(true), 50); return; }
       if (screen === 'stores') { setTimeout(()=>setShowStores(true), 50); return; }
       if (screen === 'executive') { setTimeout(()=>setShowExecSummary(true), 50); return; }
+      if (screen === 'performance') { setTimeout(()=>setShowExecReport(true), 50); return; }
       if (screen === 'maintenance') { setTimeout(()=>setShowMaintenance(true), 50); return; }
       if (screen === 'revenue') { setTimeout(()=>setShowRevenue(true), 50); return; }
       if (screen === 'supplier') { setTimeout(()=>setShowSupplier(true), 50); return; }
@@ -1034,7 +1037,7 @@ function DashboardInner({dark,setDark}) {
   const leaveAdmin = () => { setShowAdmin(false); setShowSettings(false); };
   const closeModuleScreens = () => {
     setShowAgeing(false); setShowERP(false); setShowStores(false);
-    setShowExecSummary(false); setShowManpower(false); setShowRevenue(false);
+    setShowExecSummary(false); setShowExecReport(false); setShowManpower(false); setShowRevenue(false);
     setShowSupplier(false); setShowRequests(false); setShowMaintenance(false);
     setShowU2Migrate(false); setShowChildParts(false); setShowLogistics(false);
     setShowHR(false); setShowIT(false); setShowCustomer(false); setShowSecurity(false);
@@ -1085,6 +1088,7 @@ function DashboardInner({dark,setDark}) {
   if(showERP)    return <ERPDashboard   dark={dark} onBack={()=>setShowERP(false)}    unit={unit}/> ;
   if(showStores) return <StoresDashboard dark={dark} onBack={()=>setShowStores(false)} unit={unit}/> ;
   if(showExecSummary)  return <ExecutiveSummary dark={dark} onBack={()=>setShowExecSummary(false)} unit={unit}/>;
+  if(showExecReport)   return <ExecReport userProfile={userProfile} onBack={()=>setShowExecReport(false)}/>;
   if(showManpower)     return <ManpowerDashboard dark={dark} onBack={()=>setShowManpower(false)}/>;
   if(showRevenue)      return <RevenueDashboard dark={dark} onBack={()=>setShowRevenue(false)} unit={unit}/> ;
   if(showSupplier)     return <SupplierDashboard userRole={userProfile?.role} userDept={userProfile?.dept} userProfile={userProfile} unit={unit} onBack={()=>setShowSupplier(false)}/>;
@@ -1141,6 +1145,7 @@ function DashboardInner({dark,setDark}) {
           {canScreen('supplier')&&<button style={navBtn(showSupplier)} onClick={()=>openScreen(setShowSupplier)}>📦 Supplier</button>}
           {canScreen('exec_summary')&&<button style={navBtn(showExecSummary)} onClick={()=>openScreen(setShowExecSummary)}>📊 Operations</button>}
           {canScreen('revenue')&&<button style={navBtn(showRevenue)} onClick={()=>openScreen(setShowRevenue)}>💰 Revenue</button>}
+          {canScreen('performance')&&<button style={navBtn(showExecReport)} onClick={()=>openScreen(setShowExecReport)}>📈 Performance</button>}
           {canScreen('maintenance')&&<button style={navBtn(showMaintenance)} onClick={()=>openScreen(setShowMaintenance)}>🔧 Maintenance</button>}
           {canScreen('requests')&&<button style={navBtn(showRequests)} onClick={()=>openScreen(setShowRequests)}>📝 Requests</button>}
           {canScreen('child_parts')&&<button style={navBtn(showChildParts)} onClick={()=>openScreen(setShowChildParts)}>🔩 Child Parts</button>}

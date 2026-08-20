@@ -3493,8 +3493,12 @@ function DCApprovalTab({ dark, card, txt, sub, bdr, dcApprovals, pendingDCs, use
 function requestIsFullyApproved(r) {
   if (!r || r.rejected) return false;
   if (r.autoApproved) return true;
-  const flow = Array.isArray(r.flow) ? r.flow : [];
-  if (!flow.length) return false;
+  let flow = Array.isArray(r.flow) ? r.flow : [];
+  if (!flow.length) {
+    flow = r.type === 'leave'
+      ? [{ role: 'supervisor' }, { role: 'hr' }, { role: 'jmd' }, { role: 'md' }]
+      : [{ role: 'jmd' }, { role: 'md' }];
+  }
   return flow.every((s) => {
     const role = typeof s === 'object' ? s.role : s;
     return r.approvals?.[role]?.status === 'Approved';
@@ -3859,7 +3863,7 @@ function ClearedTab({ dark, card, txt, sub, bdr, col, userProfile, unit, isMobil
     return ()=>unsub();
   },[unit]);
 
-  const isFullyApproved = r => (r.flow||['jmd','md']).every(role => r.approvals?.[role]?.status==='Approved') || r.autoApproved;
+  const isFullyApproved = requestIsFullyApproved;
   const getApprovalStatus = r => {
     const jmd = r.approvals?.jmd?.status;
     const md  = r.approvals?.md?.status;
@@ -4010,22 +4014,25 @@ function ClearedTab({ dark, card, txt, sub, bdr, col, userProfile, unit, isMobil
 
         {/* Approval stamps — only show roles in stored flow */}
         <div style={{display:'flex',gap:6,marginBottom:isLeave?0:10,flexWrap:'wrap'}}>
-          {(req.flow?.length>0?req.flow:[...(isLeave?['supervisor','hr','jmd','md']:['jmd','md'])]).map(role=>{
-            const label = role==='jmd'?'JMD':role==='md'?'MD':role==='hr'?'HR':role.charAt(0).toUpperCase()+role.slice(1);
-            return [role,label];
-          }).map(([role,label])=>{
-            const st = req.approvals?.[role]?.status;
-            const bg = st==='Approved'?'#f0fdf4':st==='Rejected'?'#fef2f2':'#fef9c3';
-            const co = st==='Approved'?'#15803d':st==='Rejected'?'#dc2626':'#b45309';
-            const ic = st==='Approved'?'✅':st==='Rejected'?'❌':'⏳';
-            return <span key={role} style={{background:bg,color:co,borderRadius:6,padding:'2px 10px',fontSize:10,fontWeight:700}}>{ic} {label} {st||'Pending'}</span>;
-          })}
+          {(() => {
+            const chips = approvalChips(req).length ? approvalChips(req) : (isLeave
+              ? [{ role: 'supervisor', label: 'Supervisor' }, { role: 'hr', label: 'HR' }, { role: 'jmd', label: 'JMD' }, { role: 'md', label: 'MD' }]
+              : [{ role: 'jmd', label: 'JMD' }, { role: 'md', label: 'MD' }]
+            );
+            return chips.map(({ role, label, st }) => {
+              const status = st || req.approvals?.[role]?.status;
+              const bg = status==='Approved'?'#f0fdf4':status==='Rejected'?'#fef2f2':'#fef9c3';
+              const co = status==='Approved'?'#15803d':status==='Rejected'?'#dc2626':'#b45309';
+              const ic = status==='Approved'?'✅':status==='Rejected'?'❌':'⏳';
+              return <span key={role} style={{background:bg,color:co,borderRadius:6,padding:'2px 10px',fontSize:10,fontWeight:700}}>{ic} {label} {status||'Pending'}</span>;
+            });
+          })()}
           {req.editedDays && <span style={{background:'#eff6ff',color:'#1e40af',borderRadius:6,padding:'2px 10px',fontSize:10,fontWeight:700}}>✏️ Days edited: {req.leaveDays}</span>}
         </div>
 
         {/* Action buttons */}
         {!actioned && isOD && (() => {
-          const fullyApproved = (req.flow||['jmd','md']).every(r=>req.approvals?.[r]?.status==='Approved')||req.autoApproved;
+          const fullyApproved = requestIsFullyApproved(req);
           return fullyApproved
             ? <button onClick={()=>markOD(req)} disabled={acting===req.id}
                 style={{width:'100%',padding:'12px',borderRadius:10,border:'none',background:acting===req.id?'#999':'linear-gradient(135deg,#f97316,#ea580c)',color:'#fff',fontWeight:800,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>
@@ -4036,7 +4043,7 @@ function ClearedTab({ dark, card, txt, sub, bdr, col, userProfile, unit, isMobil
               </div>;
         })()}
         {!actioned && isVisitor && (() => {
-          const fullyApproved = (req.flow||['jmd','md']).every(r=>req.approvals?.[r]?.status==='Approved')||req.autoApproved;
+          const fullyApproved = requestIsFullyApproved(req);
           return fullyApproved
             ? <button onClick={()=>markVisitor(req)} disabled={acting===req.id}
                 style={{width:'100%',padding:'12px',borderRadius:10,border:'none',background:acting===req.id?'#999':'linear-gradient(135deg,#16a34a,#15803d)',color:'#fff',fontWeight:800,fontSize:14,cursor:'pointer',fontFamily:'inherit'}}>

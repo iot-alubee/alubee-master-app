@@ -2,9 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { collection, doc, setDoc, deleteDoc, onSnapshot, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { createNotification, NOTIF_TYPES } from '../utils/notificationService';
-
-// ── Access ────────────────────────────────────────────────────────────────────
-const ALLOWED = ['owner@alubee.com','md@alubee.com','agilan@alubee.com','mohan@alubee.com','pachayappan@alubee.com','gopi@alubee.com','udhay@alubee.com'];
+import { canAccessScreen } from '../data/appRoles';
 
 // ── Child Parts Master (36 parts with supplier info) ─────────────────────────
 const CHILD_PARTS_MASTER = {
@@ -483,9 +481,7 @@ function ScheduleLink({ entries, year, month }) {
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 export default function ChildPartsDashboard({ userProfile, onBack }) {
-  const userEmail = userProfile?.email;
-  const isOwner   = ['owner@alubee.com','md@alubee.com'].includes(userEmail);
-  if (!ALLOWED.includes(userEmail)&&!isOwner) return (
+  if (!canAccessScreen(userProfile, 'child_parts')) return (
     <div style={{minHeight:'100vh',background:C.bg,display:'flex',alignItems:'center',justifyContent:'center',color:C.text}}>
       <div style={{textAlign:'center'}}><div style={{fontSize:48,marginBottom:12}}>🔒</div><div style={{fontWeight:700}}>Access restricted</div></div>
     </div>

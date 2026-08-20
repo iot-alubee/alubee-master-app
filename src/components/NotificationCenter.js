@@ -23,15 +23,23 @@ import { notifVisibleToUser, isBroadcastNotifRole } from '../utils/settingsServi
 const TABS = [
   { id:'all',        label:'All',          icon:'🔔' },
   { id:'approvals',  label:'Approvals',    icon:'⏳' },
-  { id:'approved',   label:'Approved',     icon:'✅' },
-  { id:'rejected',   label:'Rejected',     icon:'❌' },
   { id:'tasks',      label:'Tasks',        icon:'📋' },
   { id:'security',   label:'Security',     icon:'🔒' },
+  { id:'visitors',   label:'Visitors',     icon:'👤' },
+  { id:'operations', label:'Ops',          icon:'📊' },
+  { id:'approved',   label:'Approved',     icon:'✅' },
+  { id:'rejected',   label:'Rejected',     icon:'❌' },
 ];
+
+const FACTORY_TABS = ['security', 'visitors', 'operations'];
 
 const TAB_TYPES = {
   tasks:      ['task_assigned','task_updated','task_cancelled','task_deleted','task_overdue','task_reopened'],
-  security:   ['vehicle','internal','transfer','mobilebox','power','overstay','visitor','permission','dc','tea'],
+  security:   ['vehicle','internal','transfer','mobilebox','power','overstay','tea'],
+  visitors:   ['visitor','permission'],
+  operations: ['erp','stores','manpower','revenue','supplier_inward','supplier_rag',
+                'customer_dispatch','customer_schedule','stores_checklist','stores_alloy',
+                'stores_transfer','bins_shortage','dispatch','maintenance'],
 };
 
 function isRequestNotif(n) {
@@ -773,14 +781,14 @@ function PendingRequests({ unit, dark, bdr, txt, sub, userMobile, userAppRole, o
               <button disabled={!!saving} onClick={() => (req.type === 'leave' ? onOpen({ req }) : reject(req))}
                 style={{ flex: 1, background: 'var(--red)', border: 'none', borderRadius: 8, padding: '8px', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
                 {saving === req.id + 'R' ? '⏳' : '❌ Reject'}
-              </button>
+            </button>
               <button disabled={!!saving} onClick={() => (req.type === 'leave' ? onOpen({ req }) : approve(req))}
                 style={{ flex: 2, background: '#7c3aed', border: 'none', borderRadius: 8, padding: '8px', color: '#fff', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>
                 {saving === req.id + 'A' ? '⏳ Approving…' : (req.type === 'leave' ? '👁 Review & Approve' : '✅ Approve')}
-              </button>
-            </div>
-            )}
+            </button>
           </div>
+            )}
+        </div>
         );
       })}
     </div>
@@ -1085,7 +1093,7 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
 
         {/* Tabs */}
         <div style={{display:'flex',gap:4,overflowX:'auto',paddingBottom:2}}>
-          {(hideFactoryFeed ? TABS.filter((t) => t.id !== 'security') : TABS).map(t=>{
+          {(hideFactoryFeed ? TABS.filter((t) => !FACTORY_TABS.includes(t.id)) : TABS).map(t=>{
             const cnt = tabCount(t.id);
             const active = tab===t.id;
             return (
@@ -1114,17 +1122,17 @@ export default function NotificationCenter({ unit, dark, onClose, notifs = [], u
       <div style={{flex:1,overflowY:'auto',position:'relative'}}>
         <div style={{ display: tab === 'approvals' ? 'block' : 'none' }}>
           <PendingRequests unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub} userMobile={userMobile} userAppRole={userAppRole} userProfile={userProfile} onOpen={openDetail} onCount={setPendingReqCount}/>
+          {!hideFactoryFeed && <PendingDCs unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub}/>}
         </div>
-        {tab==='security' && !hideFactoryFeed && (
+        {tab==='visitors' && !hideFactoryFeed && (
           <>
-            <PendingDCs unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub}/>
             <PendingVisitors unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub}/>
             <PendingPermissions unit={unit} dark={dark} bdr={bdr} txt={txt} sub={sub}/>
           </>
         )}
 
         {/* Notification list */}
-        {sorted.length===0 && !(tab==='approvals' && pendingReqCount>0) && (
+        {sorted.length===0 && !(tab==='approvals' && pendingReqCount>0) && !(tab==='visitors' && !hideFactoryFeed) && (
           <div style={{textAlign:'center',padding:'48px 20px',color:sub}}>
             <div style={{fontSize:36,marginBottom:8}}>🔔</div>
             <div style={{fontSize:13}}>
